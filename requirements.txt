@@ -39,3 +39,4 @@ albumentations>=1.4.0       # Augmentation pipeline for synthetic conditions
 tensorboard>=2.15.0
 tqdm>=4.66.0
 httpx>=0.27.0               # Async HTTP client (used in tests / health checks)
+fiftyone>=1.15.0

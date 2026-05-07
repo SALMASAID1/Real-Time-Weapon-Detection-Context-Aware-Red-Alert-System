@@ -1,15 +1,20 @@
 # Task 1.2: Data Aggregation & Cleaning
 
 ## Description
-Merge multiple datasets to reach the project target of ~40,000 images, ensuring high generalization across different environments.
+Consolidate ~36,000 images from six disparate sources into a unified YOLO-format dataset, balancing classes and ensuring high generalization.
 
 ## Details
-1. **Source Aggregation**: Combine images from:
-   - University of Granada (SOHAS)
-   - Unidpro
-   - Simuletic (Synthetic datasets)
-2. **Standardization**: Convert all annotations to YOLO format and ensure consistent class naming.
-3. **Cleaning**: Remove corrupted images and verify that weapons are correctly labeled in low-light samples.
+1. **Source Aggregation**: Combine images into `data/processed/yolo_dataset/` from:
+   - `dataset_merged` (~23,300 images)
+   - `archive` / UGR SOHAS (~720 images)
+   - `Simuletic_Weapon_Umbrella_Dataset` (~120 images)
+   - `Weapon-detection.v1i.yolov11` (~2,100 images)
+   - `hard_negatives_oi` (~5,000 Open Images V7 Confuser samples)
+   - `hard_negatives_coco` (~5,000 COCO 2017 Person samples)
+2. **Standardization & Class Mapping**: Convert all annotations to YOLO format and map to the unified schema: `0: Weapon`, `1: Person`, `2: Confuser`.
+3. **Addressing Imbalance**: FiftyOne is used to balance the dataset by adding 10,000 high-variance "Confuser/Person" samples to offset the ~26,000 weapon-heavy samples.
+4. **Hand Detection Strategy**: Confirmed Two-Stream Inference approach. No hand labeling will occur in this dataset; we will use a parallel pre-trained YOLO hand model for proximity logic ($B_h \cap B_w$) calculation.
+5. **Cleaning**: Remove corrupted images and verify that weapons are correctly labeled in low-light samples.
 
 ## Learning Resources
 - [UGR SOHAS Dataset Info](https://deep-learning-ugr.github.io/SOHAS/)

@@ -1,0 +1,138 @@
+Advanced Deep Learning Project 2026
+
+Weapon Detection & Threat Analysis
+
+Technical Roadmap: Real-Time Weapon Detection &
+Context-Aware Red Alert System
+A Two-Person Collaborative Research Proposal
+Project Domain: Computer Vision, Temporal Sequence Analysis, XAI
+
+1
+
+Project Abstract
+
+Building upon the foundational work of previous academic terms (e.g., Driver Drowsiness and Dermal
+Classification), this project transitions from simple object classification to Active Threat Intelligence. By fusing the high-speed detection capabilities of the YOLOv11/v12 architecture with the
+global contextual understanding of Swin Transformers, we aim to build a system that identifies
+firearms and bladed weapons while distinguishing them from benign handheld electronics. The project
+culminates in an automated Red Alert System that triggers visual, auditory, and digital notifications.
+
+2
+
+Phase 1: Dataset Synthesis & Pre-processing
+
+To achieve high precision in cluttered environments, we will implement a multi-stage data pipeline:
+• Data Aggregation: A composite dataset of ≈45,000 images sourced from:
+– University of Granada (SOHAS): Handgun and knife handling.
+– Unidpro 2026: High-definition staged tactical scenarios.
+– Simuletic Synthetic: Simulation of low-light and adverse weather CCTV feeds.
+• Hard Negative Mining: Specifically labeling “Confuser Objects” (smartphones, wallets, drills,
+umbrellas) to force the model to learn fine-grained discriminative features.
+• Slicing Aided Hyper Inference (SAHI): Implementation of a tiling strategy for inference.
+Given an image I, it is partitioned into overlapping patches Pi,j of size s × s:
+[
+[
+I=
+Pi,j =⇒ Inference(I) = NMS( Inference(Pi,j ))
+(1)
+i,j
+
+This prevents the loss of feature resolution for small objects in 4K surveillance streams.
+
+3
+
+Phase 2: Hybrid Model Architecture
+
+The system utilizes a state-of-the-art hybrid backbone to balance latency and accuracy.
+• Backbone: YOLOv11 for local spatial feature extraction.
+• Neck: Swin Transformer blocks using Shifted Windows (S-W-MSA) to capture long-range
+dependencies between the person and the potential weapon.
+• Loss Function: We utilize a compound loss including CIoU for bounding box regression and
+Focal Loss for class imbalance:
+Ltotal = λbox LCIoU + λcls [−αt (1 − pt )γ log(pt )]
+
+1
+
+(2)
+
+Advanced Deep Learning Project 2026
+
+4
+
+Weapon Detection & Threat Analysis
+
+Phase 3: Hand-Weapon Proximity & Threat Logic
+
+An advanced alert should only fire if a weapon is being actively handled.
+1. Detection Heads: The model will output two specific classes: Hand and Weapon.
+2. Proximity Condition: Let Bh be the bounding box for a hand and Bw for a weapon. A threat
+T is validated if:
+(
+Area(Bh ∩Bw )
+1 if Area(B
+>τ
+h ∪Bw )
+Threat(T ) =
+(3)
+0 otherwise
+where τ is the empirically determined Intersection over Union (IoU) threshold.
+
+5
+
+Phase 4: Multimodal Red Alert System
+
+Upon threat validation, a prioritized alert protocol is executed:
+• Visual UI Alert: A flashing red border on the GUI implemented via a frame-counter modulo:
+(
+Red
+if (f rame_idx (mod 10) < 5)
+BorderColor =
+(4)
+Transparent else
+• Auditory Trigger: Triggering a 1500Hz square wave alarm using the Pygame mixer.
+• Digital Notification: Automated execution of an asynchronous Telegram Bot API request
+to send a JPEG snapshot and the GPS coordinates of the camera to security personnel.
+
+6
+
+Phase 5: Explainability & Optimization
+• XAI: Using Grad-CAM to visualize the gradient flow. This ensures the model is activating on
+the trigger guard or blade edge rather than the carrier’s clothing.
+• Quantization: Conversion of the PyTorch weights to TensorRT (INT8 precision) to ensure
+the system maintains > 40 FPS on NVIDIA Jetson or RTX-series hardware.
+
+7
+
+8
+
+Team Responsibility Matrix
+
+Task Category
+
+Partner A (Architect)
+
+Partner B (Data/Alerts)
+
+Model Development
+Logic Layer
+Alert Systems
+Validation
+
+Swin-Transformer Integration
+Proximity Detection Algorithms
+Telegram Bot & SMS Backend
+TensorRT Quantization
+
+Dataset Merging & Cleaning
+SAHI Tiling Integration
+OpenCV Visual/Audio Overlays
+Grad-CAM & mAP Evaluation
+
+Success Metrics
+• Primary: mAP@0.5:0.95 ≥ 0.72.
+• Secondary: False Positive Rate (FPR) on “Confuser Objects” < 2%.
+• Inference Speed: ≤ 25ms per 1080p frame.
+
+2
+
+
