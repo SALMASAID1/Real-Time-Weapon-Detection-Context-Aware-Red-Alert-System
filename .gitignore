@@ -1,36 +1,123 @@
-# Virtual Environment
-venv/
-.venv/
-env/
+# =============================================================================
+# AWD&TA — Real-Time Weapon Detection System
+# .gitignore — covers Python ML, FastAPI, React/Vite, and system files
+# =============================================================================
 
-# Python
+# ─── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+MANIFEST
+
+# ─── Virtual Environments ─────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+.env.local
+
+# ─── Jupyter Notebooks ────────────────────────────────────────────────────────
 .ipynb_checkpoints/
+*/.ipynb_checkpoints/
+# Keep .ipynb files tracked (they are source); ignore only checkpoints
 
-# Models & Weights
+# ─── Model Weights & Exports ──────────────────────────────────────────────────
+# All binary model artifacts — can be large (100MB+)
 *.pt
+*.pth
 *.onnx
-*.engine
-*.pb
-*.weights
-models/weights/
+*.engine          # TensorRT serialised engine
+*.trt
+*.pb              # TensorFlow protobuf
+*.weights         # Darknet weights
+*.bin             # GGUF / HF binary shards
+*.safetensors
+models/weights/   # Trained checkpoint directory
 
-# Data
-data/train/
-data/val/
-data/test/
-data/*.zip
-data/*.tar
-data/*.gz
+# ─── Dataset & Raw Data ───────────────────────────────────────────────────────
+# Raw downloads — large, re-downloadable from source
+data/raw/
+data/processed/
 
-# Logs & Monitoring
-runs/
+# Common archive formats (downloaded dataset ZIPs)
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.7z
+*.rar
+
+# ─── Threat Event Logs (runtime-generated) ────────────────────────────────────
 logs/
-.tensorboard/
+*.log
+*.jsonl
+threat_events.json
+threat_events.db
+*.sqlite
+*.sqlite3
+*.db
 
-# OS/IDEs
+# ─── Training Outputs ─────────────────────────────────────────────────────────
+runs/             # Ultralytics training run output
+outputs/
+results/
+wandb/            # Weights & Biases experiment tracking
+mlruns/           # MLflow run artifacts
+.tensorboard/
+tensorboard_logs/
+
+# ─── Grad-CAM / XAI Artifacts ─────────────────────────────────────────────────
+# Generated heatmap images — large and reproducible
+xai_outputs/
+gradcam_images/
+*.heatmap.jpg
+*.overlay.jpg
+
+# ─── Environment & Secrets ────────────────────────────────────────────────────
+# CRITICAL: never commit API keys or tokens
+.env
+.env.*
+!.env.example      # Allow the example template to be committed
+secrets.json
+*.pem
+*.key
+*.cert
+
+# ─── React / Node (ui/) ───────────────────────────────────────────────────────
+ui/node_modules/
+ui/dist/           # Vite production build output
+ui/.vite/          # Vite cache
+ui/coverage/       # Test coverage reports
+
+# ─── OS & Editor Files ────────────────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+desktop.ini
+
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ─── Misc Temporary Files ─────────────────────────────────────────────────────
+tmp/
+temp/
+.tmp/
+*.tmp
+*.bak
+*.orig
+*.rej

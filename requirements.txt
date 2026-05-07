@@ -1,23 +1,41 @@
+# =============================================================================
+# AWD&TA — Python Backend Requirements
+# =============================================================================
+
 # Core Computer Vision & AI
-ultralytics>=8.2.0        # YOLOv11/v12 support
-torch>=2.2.0              # Optimized for Python 3.11
-torchvision>=0.17.0       # Matching Torch version
-opencv-python>=4.9.0      # Latest stable CV2
-sahi>=0.11.16             # Advanced inference support
+ultralytics>=8.2.0          # YOLOv11/v12 support
+torch>=2.2.0                # Optimized for Python 3.11
+torchvision>=0.17.0         # Matching Torch version
+opencv-python>=4.9.0        # Latest stable CV2
+sahi>=0.11.16               # Tiled SAHI inference + NMS merge
+
+# Transformer & Attention
+timm>=0.9.0                 # SwinTransformerBlock for neck integration
+
+# Explainability (XAI)
+grad-cam>=1.5.0             # pytorch-grad-cam: GradCAMGenerator backend
+
+# API Backend
+fastapi>=0.110.0            # Async web framework
+uvicorn>=0.27.0             # ASGI server
+websockets>=12.0            # Low-latency WS for React UI
+pydantic>=2.6.0             # Schema validation (v2)
+python-dotenv>=1.0.0        # Manage environment variables
 
 # Alerting & Interaction
-python-telegram-bot>=20.8  # Modern async telegram API
-pygame>=2.5.2             # Stable audio triggers
+python-telegram-bot>=20.8   # Modern async Telegram API
+pygame>=2.5.2               # Stable audio triggers for local alert beep
 
 # Data Science & Visualization
-numpy<2.0.0               # Maintain compatibility with torch/ultralytics
-pandas>=2.1.0             # Optimized for Python 3.11
+numpy<2.0.0                 # Maintain compatibility with torch/ultralytics
+pandas>=2.1.0
 matplotlib>=3.8.0
 seaborn>=0.13.0
-pillow>=10.2.0            # Core image processing
-scipy>=1.11.0             # Scientific computing foundation
+pillow>=10.2.0              # Core image processing
+scipy>=1.11.0               # Scientific computing foundation
+albumentations>=1.4.0       # Augmentation pipeline for synthetic conditions
 
 # Monitoring & Utilities
 tensorboard>=2.15.0
-tqdm>=4.66.0              # Progress bars for training
-python-dotenv>=1.0.0      # Manage environment variables (e.g., API keys)
+tqdm>=4.66.0
+httpx>=0.27.0               # Async HTTP client (used in tests / health checks)

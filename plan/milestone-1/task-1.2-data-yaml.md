@@ -1,17 +1,17 @@
-# Task 1.2: Data Acquisition & YAML Configuration
+# Task 1.2: Data Aggregation & Cleaning
 
 ## Description
-Configure the dataset structure and YAML files required for YOLOv11 training.
+Merge multiple datasets to reach the project target of ~40,000 images, ensuring high generalization across different environments.
 
 ## Details
-1. **Dataset Structure**: Organize data into `train`, `val`, and `test` folders inside `data/`.
-2. **YAML Configuration**: Create `data/yaml/dataset.yaml` to define:
-   - Paths to train/val image sets.
-   - Number of classes (`nc`).
-   - Class names (e.g., `pistol`, `rifle`, `knife`).
-3. **Data Verification**: Ensure that labels are in YOLO format (normalized `x_center`, `y_center`, `width`, `height`).
+1. **Source Aggregation**: Combine images from:
+   - University of Granada (SOHAS)
+   - Unidpro
+   - Simuletic (Synthetic datasets)
+2. **Standardization**: Convert all annotations to YOLO format and ensure consistent class naming.
+3. **Cleaning**: Remove corrupted images and verify that weapons are correctly labeled in low-light samples.
 
 ## Learning Resources
-- [YOLOv8/v11 Dataset Format Guide](https://docs.ultralytics.com/datasets/detect/)
-- [Roboflow: How to export data for YOLO](https://blog.roboflow.com/how-to-train-yolov8-on-a-custom-dataset/)
-- [LabelImg GitHub](https://github.com/HumanSignal/labelImg) (for local annotation)
+- [UGR SOHAS Dataset Info](https://deep-learning-ugr.github.io/SOHAS/)
+- [Dataset Merging Strategies for YOLO](https://docs.ultralytics.com/datasets/explorer/)
+- [Roboflow: Dataset Management at Scale](https://roboflow.com/formats/yolo-v8-pytorch-txt)

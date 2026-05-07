@@ -1,17 +1,14 @@
-# Task 4.1: Telegram & Pygame Alert Triggers
+# Task 4.1: Hand-Weapon Logic & Proximity Analysis
 
 ## Description
-Implement the multi-channel notification system in `utils/alerts.py`.
+Develop a logic layer that understands the relationship between people and weapons, specifically focusing on Hand-Weapon interaction.
 
 ## Details
-1. **Telegram Notifications**: 
-   - Set up a Telegram Bot.
-   - Send text alerts and captured frames of the threat to a specified chat/group.
-2. **Audio Alerts (Pygame)**:
-   - Use `pygame.mixer` to play a siren or alarm sound locally when a Red Alert is triggered.
-3. **Throttling**: Implement logic to prevent spamming alerts for the same event.
+1. **Parallel Detection**: Ensure the model detects "Hands" and "Weapons" as separate classes (or use a secondary model for hands).
+2. **Intersection over Union (IoU)**: Calculate the IoU between detected Hand boxes and Weapon boxes.
+3. **Contextual Alerting**: Trigger "High Priority" alerts only when the IoU exceeds a specific threshold (indicating a weapon is being held).
 
 ## Learning Resources
-- [How to create a Telegram Bot and send messages](https://core.telegram.org/bots/tutorial)
-- [Python Telegram Bot Documentation](https://python-telegram-bot.org/)
-- [Pygame Mixer: Playing Sound in Python](https://www.pygame.org/docs/ref/mixer.html)
+- [Hand-Object Interaction Detection](https://arxiv.org/abs/2004.03684)
+- [Calculating IoU between multiple classes](https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/)
+- [Building Contextual Intelligence in CV](https://towardsdatascience.com/contextual-intelligence-in-computer-vision-2f7d3e0b2e7a)
