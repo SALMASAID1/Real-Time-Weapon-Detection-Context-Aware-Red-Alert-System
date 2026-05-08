@@ -15,7 +15,7 @@ def fetch_open_images():
     # We load the dataset and then export it to YOLO format
     dataset = foz.load_zoo_dataset(
         "open-images-v7",
-        split="train",
+        splits=["train", "validation", "test"],
         label_types=["detections"],
         classes=classes,
         max_samples=5000,
@@ -40,7 +40,7 @@ def fetch_coco():
     
     dataset = foz.load_zoo_dataset(
         "coco-2017",
-        split="train",
+        splits=["train", "validation"],
         label_types=["detections"],
         classes=classes,
         max_samples=5000,

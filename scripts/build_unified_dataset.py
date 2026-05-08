@@ -14,6 +14,7 @@ DS_SIMULETIC = RAW_DIR / "Simuletic_Weapon_Umbrella_Dataset"
 DS_YOLOV11 = RAW_DIR / "Weapon-detection.v1i.yolov11"
 DS_OI = RAW_DIR / "hard_negatives_oi"
 DS_COCO = RAW_DIR / "hard_negatives_coco"
+DS_ADDITIONAL_WEAPONS = RAW_DIR / "additional_weapons_oi"
 
 # Target classes
 # 0: Weapon
@@ -59,12 +60,11 @@ def process_label(label_path, out_label_path, class_map, map_all_to=None):
         
     return valid
 
-def copy_data(src_images, src_labels, split, class_map=None, map_all_to=None, prefix=""):
+def collect_data(src_images, src_labels, class_map=None, map_all_to=None, prefix=""):
+    items = []
     if not src_images.exists():
-        return 0, 0
+        return items
     
-    img_count = 0
-    label_count = 0
     for img_name in os.listdir(src_images):
         if not img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
             continue
@@ -73,18 +73,34 @@ def copy_data(src_images, src_labels, split, class_map=None, map_all_to=None, pr
         base_name = os.path.splitext(img_name)[0]
         src_lbl = src_labels / f"{base_name}.txt"
         
-        # New names
-        new_img_name = f"{prefix}_{img_name}"
-        new_lbl_name = f"{prefix}_{base_name}.txt"
+        items.append({
+            "src_img": src_img,
+            "src_lbl": src_lbl if src_lbl.exists() else None,
+            "prefix": prefix,
+            "base_name": base_name,
+            "img_name": img_name,
+            "class_map": class_map,
+            "map_all_to": map_all_to
+        })
+            
+    return items
+
+def write_data(items, split):
+    img_count = 0
+    label_count = 0
+    
+    for item in items:
+        new_img_name = f"{item['prefix']}_{item['img_name']}"
+        new_lbl_name = f"{item['prefix']}_{item['base_name']}.txt"
         
         dst_img = OUTPUT_DIR / split / "images" / new_img_name
         dst_lbl = OUTPUT_DIR / split / "labels" / new_lbl_name
         
-        shutil.copy(src_img, dst_img)
+        shutil.copy(item['src_img'], dst_img)
         img_count += 1
         
-        if src_lbl.exists():
-            process_label(src_lbl, dst_lbl, class_map, map_all_to)
+        if item['src_lbl']:
+            process_label(item['src_lbl'], dst_lbl, item['class_map'], item['map_all_to'])
             label_count += 1
             
     return img_count, label_count
@@ -105,91 +121,162 @@ names:
         f.write(yaml_content)
 
 def main():
+    import random
     print("Setting up unified dataset directories...")
+    # Clear output dir if exists to ensure clean run
+    if OUTPUT_DIR.exists():
+        shutil.rmtree(OUTPUT_DIR)
     setup_dirs()
     
-    total_imgs = 0
+    global_items = []
     
     # Source 1: dataset_merged
-    print("Processing Source 1: dataset_merged...")
+    print("Collecting from Source 1: dataset_merged...")
     for split in ["train", "val", "test"]:
-        imgs, lbls = copy_data(
+        items = collect_data(
             DS_MERGED / split / "images",
             DS_MERGED / split / "labels",
-            split,
             class_map={0: 0},
             prefix="ds1"
         )
-        total_imgs += imgs
+        global_items.extend(items)
         
     # Source 2: archive (classes 0-8 -> 0)
-    print("Processing Source 2: archive...")
+    print("Collecting from Source 2: archive...")
     for split in ["train", "val", "test"]:
         base_path = DS_ARCHIVE / "weapon_detection" / split
         if not base_path.exists():
             base_path = DS_ARCHIVE / split
         
-        imgs, lbls = copy_data(
+        items = collect_data(
             base_path / "images",
             base_path / "labels",
-            split,
             class_map={i: 0 for i in range(15)}, # Map all to 0
             prefix="ds2"
         )
-        total_imgs += imgs
+        global_items.extend(items)
         
     # Source 3: Simuletic (0->1, 1->0, 2->2)
-    print("Processing Source 3: Simuletic...")
-    imgs, lbls = copy_data(
+    print("Collecting from Source 3: Simuletic...")
+    items = collect_data(
         DS_SIMULETIC / "images",
         DS_SIMULETIC / "labels",
-        "train", # Defaulting to train
         class_map={0: 1, 1: 0, 2: 2},
         prefix="ds3"
     )
-    total_imgs += imgs
+    global_items.extend(items)
     
     # Source 4: Weapon-detection.v1i.yolov11 (existing -> 0)
-    print("Processing Source 4: Weapon-detection.v1i.yolov11...")
+    print("Collecting from Source 4: Weapon-detection.v1i.yolov11...")
     for split in ["train", "valid", "test"]:
-        out_split = "val" if split == "valid" else split
-        imgs, lbls = copy_data(
+        items = collect_data(
             DS_YOLOV11 / split / "images",
             DS_YOLOV11 / split / "labels",
-            out_split,
             class_map={i: 0 for i in range(15)}, # Map any to 0
             prefix="ds4"
         )
-        total_imgs += imgs
+        global_items.extend(items)
         
     # Source 5: Open Images V7 Hard Negatives (all -> 2)
-    print("Processing Source 5: Open Images V7 Hard Negatives...")
+    print("Collecting from Source 5: Open Images V7 Hard Negatives...")
     for split in ["train", "val", "test"]:
-        imgs, lbls = copy_data(
-            DS_OI / split / "images",
-            DS_OI / split / "labels",
-            split,
+        # FiftyOne YOLO export creates `images/val`, `images/train`, etc.
+        img_dir = DS_OI / "images" / split
+        lbl_dir = DS_OI / "labels" / split
+        if not img_dir.exists():
+            img_dir = DS_OI / split / "images"
+            lbl_dir = DS_OI / split / "labels"
+        if not img_dir.exists():
+            if split == "train":
+                img_dir = DS_OI / "images"
+                lbl_dir = DS_OI / "labels"
+            else:
+                continue
+                
+        items = collect_data(
+            img_dir,
+            lbl_dir,
             map_all_to=2,
             prefix="ds5"
         )
-        total_imgs += imgs
+        global_items.extend(items)
 
     # Source 6: COCO 2017 Hard Negatives (all -> 2)
-    print("Processing Source 6: COCO 2017 Hard Negatives...")
+    print("Collecting from Source 6: COCO 2017 Hard Negatives...")
     for split in ["train", "val", "test"]:
-        imgs, lbls = copy_data(
-            DS_COCO / split / "images",
-            DS_COCO / split / "labels",
-            split,
+        img_dir = DS_COCO / "images" / split
+        lbl_dir = DS_COCO / "labels" / split
+        if not img_dir.exists():
+            img_dir = DS_COCO / split / "images"
+            lbl_dir = DS_COCO / split / "labels"
+        if not img_dir.exists():
+            if split == "train":
+                img_dir = DS_COCO / "images"
+                lbl_dir = DS_COCO / "labels"
+            else:
+                continue
+                
+        items = collect_data(
+            img_dir,
+            lbl_dir,
             map_all_to=2,
             prefix="ds6"
         )
-        total_imgs += imgs
+        global_items.extend(items)
+        
+    # Source 7: Additional Weapons from OI (all -> 0)
+    print("Collecting from Source 7: Additional Weapons OI...")
+    for split in ["train", "val", "test"]:
+        img_dir = DS_ADDITIONAL_WEAPONS / "images" / split
+        lbl_dir = DS_ADDITIONAL_WEAPONS / "labels" / split
+        if not img_dir.exists():
+            img_dir = DS_ADDITIONAL_WEAPONS / split / "images"
+            lbl_dir = DS_ADDITIONAL_WEAPONS / split / "labels"
+        if not img_dir.exists():
+            if split == "train":
+                img_dir = DS_ADDITIONAL_WEAPONS / "images"
+                lbl_dir = DS_ADDITIONAL_WEAPONS / "labels"
+            else:
+                continue
+                
+        items = collect_data(
+            img_dir,
+            lbl_dir,
+            map_all_to=0,
+            prefix="ds7"
+        )
+        global_items.extend(items)
+
+    print(f"Total collected images: {len(global_items)}")
+    print("Shuffling global dataset...")
+    # Fix seed for reproducibility
+    random.seed(42)
+    random.shuffle(global_items)
+    
+    # 80/10/10 Split
+    total_len = len(global_items)
+    train_end = int(total_len * 0.8)
+    val_end = int(total_len * 0.9)
+    
+    train_items = global_items[:train_end]
+    val_items = global_items[train_end:val_end]
+    test_items = global_items[val_end:]
+    
+    print(f"Split sizes: Train={len(train_items)}, Val={len(val_items)}, Test={len(test_items)}")
+    
+    print("Writing Train Split...")
+    write_data(train_items, "train")
+    
+    print("Writing Val Split...")
+    write_data(val_items, "val")
+    
+    print("Writing Test Split...")
+    write_data(test_items, "test")
         
     print("Generating data.yaml...")
     generate_yaml()
     
-    print(f"Done! Aggregated {total_imgs} images into {OUTPUT_DIR}")
+    print(f"Done! Aggregated {len(global_items)} images into {OUTPUT_DIR}")
     print("Verification complete: Ensure all outputs fall into classes 0, 1, 2 via data.yaml schema mapping.")
 
 if __name__ == "__main__":
