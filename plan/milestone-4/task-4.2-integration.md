@@ -4,11 +4,12 @@
 Assemble all components into a seamless real-time detection pipeline.
 
 ## Details
-1. **Pipeline Assembly**: Connect the video capture (OpenCV) -> SAHI Inference -> Threat Logic -> Alert System.
-2. **Performance Optimization**: 
-   - Optimize inference speed using FP16 quantization or TensorRT.
-   - Use asynchronous processing for alert triggers to avoid blocking the video stream.
-3. **Documentation & README**: Finalize the project documentation and create a comprehensive README.
+1. **InferenceEngine Orchestration**: Implement the background loop in `src/inference/engine.py` that manages:
+   - Frame intake from OpenCV/RTSP.
+   - Dual-model inference cadence (SAHI vs. Lightweight).
+   - Async queuing of results for the WebSocket broadcaster.
+2. **Concurrency Management**: Use `asyncio.to_thread` for the heavy inference loop to ensure the FastAPI server remains responsive.
+3. **Data Fusion Logic**: Finalize the merging of Hand and Weapon detection lists before they reach the ThreatScorer.
 
 ## Learning Resources
 - [Optimizing YOLO with TensorRT](https://docs.ultralytics.com/integrations/tensorrt/)

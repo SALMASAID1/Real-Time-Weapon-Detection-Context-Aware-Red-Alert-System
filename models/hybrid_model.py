@@ -44,7 +44,7 @@ class HybridWeaponDetector:
     ----------
     backbone_variant : str   — e.g. "yolo11m.pt"
     pretrained       : bool  — load pretrained weights for backbone and neck
-    nc               : int   — number of classes (7, matches dataset.yaml)
+    nc               : int   — number of classes (3, matches dataset.yaml)
     device           : str   — "cuda" or "cpu"
     """
 

@@ -1,15 +1,16 @@
 # Task 3.2: Context-Aware Threat Logic (Proximity IoU)
 
 ## Description
-Develop context-aware logic in `utils/threat_logic.py` to filter detections and trigger "Red Alerts" based on proximity and confidence.
+Develop context-aware logic in `src/threat_logic/threat_scorer.py` to filter detections and trigger "Red Alerts" based on proximity and confidence.
 
 ## Details
-1. **Proximity IoU**: Implement logic to detect when a weapon is in close proximity to a person or sensitive area using spatial distance or IoU-based overlap.
-2. **Threat Scoring**: Assign a threat level based on:
-   - Detection confidence.
-   - Proximity to vulnerable subjects.
+1. **Two-Stream Data Fusion**: Integrate detection results from both the custom Weapon model and the pre-trained Hand model.
+2. **Proximity IoU**: Implement logic to detect when a detected weapon bounding box overlaps with a detected hand bounding box ($B_h \cap B_w$).
+3. **Threat Scoring**: Assign a threat level based on:
+   - Detection confidence of both models.
+   - Spatial overlap (IoU) between hand and weapon.
    - Persistence of detection across multiple frames.
-3. **Alert Trigger**: Define the threshold at which a detection becomes a "Red Alert".
+4. **Alert Trigger**: Define the threshold at which a detection becomes a "Red Alert" (Active Handling).
 
 ## Learning Resources
 - [Understanding Intersection over Union (IoU)](https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/)

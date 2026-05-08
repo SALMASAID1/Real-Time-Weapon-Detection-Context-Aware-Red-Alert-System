@@ -1,7 +1,7 @@
 # Task 2.1: YOLO Backbone Implementation
 
 ## Description
-Implement or customize the YOLO backbone in `models/yolo_backbone.py` to serve as the primary feature extractor.
+Implement or customize the YOLO backbone in `models/backbones/yolo_backbone.py` to serve as the primary feature extractor.
 
 ## Details
 1. **Backbone Selection**: Use YOLOv11/v12 CSP (Cross Stage Partial) connections for efficient feature extraction.

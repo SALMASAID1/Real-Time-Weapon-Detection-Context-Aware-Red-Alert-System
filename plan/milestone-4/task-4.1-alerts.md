@@ -1,14 +1,17 @@
-# Task 4.1: Hand-Weapon Logic & Proximity Analysis
+# Task 4.1: Multi-Channel Alert System (Telegram & Audio)
 
 ## Description
-Develop a logic layer that understands the relationship between people and weapons, specifically focusing on Hand-Weapon interaction.
+Develop the alert dispatching layer in `src/threat_logic/alert_dispatcher.py` to notify security personnel when a "High" threat is detected.
 
 ## Details
-1. **Parallel Detection**: Ensure the model detects "Hands" and "Weapons" as separate classes (or use a secondary model for hands).
-2. **Intersection over Union (IoU)**: Calculate the IoU between detected Hand boxes and Weapon boxes.
-3. **Contextual Alerting**: Trigger "High Priority" alerts only when the IoU exceeds a specific threshold (indicating a weapon is being held).
+1. **Telegram Integration**: Use `python-telegram-bot` to send asynchronous alerts containing:
+   - A JPEG snapshot of the detection with bounding boxes.
+   - The timestamp and threat score.
+   - Camera ID and location metadata.
+2. **Local Audio Alerts**: Implement a local alarm trigger using the `pygame.mixer` to play a 1500Hz alert sound on the server machine.
+3. **Dispatcher Logic**: Ensure the dispatcher handles cooldowns (throttling) to prevent alert fatigue during sustained detections.
 
 ## Learning Resources
-- [Hand-Object Interaction Detection](https://arxiv.org/abs/2004.03684)
-- [Calculating IoU between multiple classes](https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/)
-- [Building Contextual Intelligence in CV](https://towardsdatascience.com/contextual-intelligence-in-computer-vision-2f7d3e0b2e7a)
+- [Python Telegram Bot Documentation](https://python-telegram-bot.org/)
+- [Playing Sounds with Pygame Mixer](https://www.pygame.org/docs/ref/mixer.html)
+- [Building an Async Alerting System in Python](https://towardsdatascience.com/building-a-real-time-alert-system-with-python-and-telegram-4d2b2f6b4b9b)

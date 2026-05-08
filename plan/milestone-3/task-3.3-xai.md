@@ -1,7 +1,7 @@
-# Task 3.2: Explainability (XAI) with Grad-CAM
+# Task 3.3: Explainability (XAI) with Grad-CAM
 
 ## Description
-Implement Grad-CAM (Gradient-weighted Class Activation Mapping) to ensure model transparency and validate that the model is focusing on relevant weapon features (e.g., barrel, trigger).
+Implement Grad-CAM (Gradient-weighted Class Activation Mapping) in `src/xai/gradcam.py` to ensure model transparency and validate that the model is focusing on relevant weapon features (e.g., barrel, trigger).
 
 ## Details
 1. **Heatmap Generation**: Generate visual heatmaps indicating which pixels influenced the model's classification.

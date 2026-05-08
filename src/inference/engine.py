@@ -23,7 +23,8 @@ and lightweight inference on frames 1 and 2, we achieve:
   - Effective throughput: 33ms average → 30 FPS
 
 Between SAHI frames, detections from the last SAHI pass are carried forward
-and combined with lightweight-pass detections for continuity.
+and combined with lightweight-pass detections for continuity. The Hand detection
+stream runs in parallel to the Weapon detection stream.
 
 Threading model
 ---------------
@@ -77,10 +78,11 @@ class InferenceEngine:
     """
     Parameters
     ----------
-    model         : HybridWeaponDetector
-    sahi_pipeline : SAHIPipeline
-    threat_scorer : ThreatScorer    (from src/threat_logic/threat_scorer.py)
-    gradcam       : GradCAMGenerator (from src/xai/gradcam.py)
+    weapon_model  : HybridWeaponDetector — Custom model (Weapons/Confusers)
+    hand_model    : YOLO — Pre-trained Hand detection model
+    sahi_pipeline : SAHIPipeline — Slicing logic for the weapon stream
+    threat_scorer : ThreatScorer — Logic layer for proximity IoU
+    gradcam       : GradCAMGenerator — Explainability for weapons
     settings      : dict  — runtime config (conf_threshold, sahi_every_n, etc.)
     camera_source : str   — OpenCV VideoCapture source (path, RTSP URL, or int)
     """

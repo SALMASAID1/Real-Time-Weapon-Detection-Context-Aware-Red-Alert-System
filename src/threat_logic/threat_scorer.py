@@ -91,15 +91,16 @@ class ThreatScorer:
         Parameters
         ----------
         detections : list[dict]
-            Full detection list from InferenceEngine (all classes, including
-            "hand" and "person" detections).
+            Merged detection list from the two-stream pipeline:
+            - "Weapon" & "Confuser" from the Custom Hybrid Model.
+            - "Hand" from the Pre-trained YOLO Hand Model.
         frame_id   : int  — Used for persistence tracking.
 
         Returns
         -------
         list[ScoredDetection]
             Only weapon-class detections are scored.
-            Hand and person detections are consumed internally for proximity.
+            Hand detections are used to calculate proximity IoU.
         """
         ...
 

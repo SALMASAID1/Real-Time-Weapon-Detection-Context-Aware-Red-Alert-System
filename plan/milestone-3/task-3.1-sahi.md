@@ -1,7 +1,7 @@
 # Task 3.1: SAHI Integration for Small Objects
 
 ## Description
-Implement Slicing Aided Hyper Inference (SAHI) in `utils/sahi_tiling.py` to improve detection performance on small weapons in high-resolution frames.
+Implement Slicing Aided Hyper Inference (SAHI) in `src/inference/sahi_pipeline.py` to improve detection performance on small weapons in high-resolution frames.
 
 ## Details
 1. **Slicing Logic**: Divide high-resolution input images into overlapping patches (slices).
