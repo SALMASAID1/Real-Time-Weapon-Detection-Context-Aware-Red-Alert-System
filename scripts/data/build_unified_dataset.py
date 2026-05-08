@@ -105,11 +105,10 @@ def write_data(items, split):
 
 def generate_yaml():
     """Create the data.yaml file for YOLOv11."""
-    yaml_content = f"""path: {config.YOLO_DATASET_DIR.relative_to(config.BASE_DIR)}
+    yaml_content = f"""path: .
 train: train/images
 val: val/images
 test: test/images
-
 nc: {len(config.CLASS_MAP)}
 names:
 """
@@ -133,7 +132,7 @@ def main():
         (config.DS_ARCHIVE, {i: 0 for i in range(15)}, None, "ds2"),
         (config.DS_SIMULETIC, {0: 1, 1: 0, 2: 2}, None, "ds3"),
         (config.DS_OI_HARD_NEG, None, 2, "ds4"),
-        (config.DS_COCO_HARD_NEG, None, 2, "ds5"),
+        (config.DS_COCO_HARD_NEG, None, 1, "ds5"),
         (config.DS_ADDITIONAL_WEAPONS, None, 0, "ds6")
     ]
     
