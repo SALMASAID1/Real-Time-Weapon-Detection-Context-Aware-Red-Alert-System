@@ -1,70 +1,8 @@
-"""
-src/threat_logic/threat_scorer.py
-====================================
-Composite threat scoring and Red Alert escalation logic.
-
-Score composition
------------------
-A single detection confidence is insufficient to trigger a Red Alert.
-High-confidence detections of weapons in a gun shop, museum display, or
-movie prop are genuine detections but not genuine threats. Context matters.
-
-The ThreatScorer combines three orthogonal signals into a composite score:
-
-    S = w1 · Conf + w2 · Proximity + w3 · Persistence
-
-Where:
-  Conf        : float  — Model confidence for the weapon detection (0–1)
-  Proximity   : float  — Max GIoU between weapon and any detected hand (0–1)
-                         from IoUCalculator.max_iou_per_weapon()
-  Persistence : float  — Normalised count of consecutive frames this
-                         (weapon_class, approximate_location) pair has
-                         been detected. Clamped to 1.0 at PERSIST_MAX frames.
-  w1, w2, w3  : float  — Tunable weights (default 0.3, 0.5, 0.2)
-
-Threat level thresholds
------------------------
-  S < 0.40              → NONE   (detection logged, no alert)
-  0.40 ≤ S < 0.70       → LOW    (low-priority notification)
-  S ≥ 0.70              → HIGH   → Red Alert triggered
-
-Temporal persistence tracking
-------------------------------
-Persistence prevents single-frame false positives from firing Red Alerts.
-A weapon appearing in frame 1 only (possibly a misidentified phone) will
-have Persistence ≈ 0 and a low composite score even if Conf is high.
-
-Tracking uses a lightweight dict keyed by (class_id, grid_cell) where
-grid_cell is a coarse spatial bucket (e.g. 100×100px grid over the full frame).
-This avoids requiring a full object tracker (SORT, ByteTrack) which would add
-significant latency.
-
-Public API
-----------
-    ThreatScorer(iou_calculator, weights, thresholds, persist_max)
-        .score(detections, frame_id) -> list[ScoredDetection]
-        .reset()  — clear persistence state (e.g. on camera switch)
-"""
-
 from dataclasses import dataclass
-from typing import Optional
-
+from typing import Optional, List, Dict
 
 @dataclass
 class ScoredDetection:
-    """
-    Output of ThreatScorer.score() for a single detection.
-
-    Fields
-    ------
-    detection      : dict        — Original detection dict from InferenceEngine
-    confidence     : float       — Model confidence
-    proximity_iou  : float       — Max GIoU with nearest hand (0 if no hands)
-    persistence    : float       — Normalised frame-count score (0–1)
-    composite_score: float       — Weighted composite S
-    threat_level   : str         — "NONE" | "LOW" | "HIGH"
-    paired_hand_idx: Optional[int] — Index of the hand with max IoU, if any
-    """
     detection:       dict
     confidence:      float
     proximity_iou:   float
@@ -73,37 +11,66 @@ class ScoredDetection:
     threat_level:    str
     paired_hand_idx: Optional[int] = None
 
-
 class ThreatScorer:
-    """
-    Parameters
-    ----------
-    iou_calculator : IoUCalculator
-    weights        : dict  — {"conf": 0.3, "proximity": 0.5, "persistence": 0.2}
-    thresholds     : dict  — {"low": 0.40, "high": 0.70}
-    persist_max    : int   — Frame count at which persistence score saturates to 1.0 (default 10)
-    """
+    def __init__(self, iou_calculator, weights=None, thresholds=None, persist_max=10):
+        self.iou_calc = iou_calculator
+        self.weights = weights or {"conf": 0.3, "proximity": 0.5, "persistence": 0.2}
+        self.thresholds = thresholds or {"low": 0.40, "high": 0.70}
+        self.persist_max = persist_max
+        self.persistence_registry = {} # (class_id, grid_x, grid_y) -> count
 
-    def score(self, detections: list, frame_id: int) -> list:
-        """
-        Score all detections in a frame.
+    def score(self, detections: List[Dict], frame_id: int) -> List[ScoredDetection]:
+        # 1. Separate Hands and Weapons
+        hands = [d for d in detections if d.get('class_name') == 'hand' or d.get('class_id') == 1]
+        weapons = [d for d in detections if d.get('class_id') == 0] # 0 is Weapon in our data.yaml
+        
+        # 2. Get Proximity Scores
+        proximity_data = self.iou_calc.max_iou_per_weapon(hands, weapons)
+        
+        scored_results = []
+        
+        for idx, (weapon, (iou, hand_idx)) in enumerate(zip(weapons, proximity_data)):
+            # 3. Calculate Persistence
+            # We use a coarse grid (100x100) to track objects without a complex tracker
+            x1, y1, x2, y2 = weapon['bbox']
+            gx, gy = int((x1+x2)/200), int((y1+y2)/200) # Grid cell
+            key = (weapon['class_id'], gx, gy)
+            
+            count = self.persistence_registry.get(key, 0) + 1
+            self.persistence_registry[key] = count
+            persistence_score = min(count / self.persist_max, 1.0)
+            
+            # 4. Composite Score Calculation
+            conf = weapon['confidence']
+            # Proximity is normalized from [-1, 1] to [0, 1] for GIoU
+            norm_proximity = max(0, iou) 
+            
+            s = (self.weights['conf'] * conf + 
+                 self.weights['proximity'] * norm_proximity + 
+                 self.weights['persistence'] * persistence_score)
+            
+            # 5. Determine Threat Level
+            level = "NONE"
+            if s >= self.thresholds['high']:
+                level = "HIGH"
+            elif s >= self.thresholds['low']:
+                level = "LOW"
+            
+            scored_results.append(ScoredDetection(
+                detection=weapon,
+                confidence=conf,
+                proximity_iou=norm_proximity,
+                persistence=persistence_score,
+                composite_score=s,
+                threat_level=level,
+                paired_hand_idx=hand_idx if hand_idx != -1 else None
+            ))
+            
+        # 6. Cleanup old persistence (very simple cleanup logic)
+        if len(self.persistence_registry) > 100:
+             self.persistence_registry = {k: v for k, v in self.persistence_registry.items() if v > 1}
 
-        Parameters
-        ----------
-        detections : list[dict]
-            Merged detection list from the two-stream pipeline:
-            - "Weapon" & "Confuser" from the Custom Hybrid Model.
-            - "Hand" from the Pre-trained YOLO Hand Model.
-        frame_id   : int  — Used for persistence tracking.
-
-        Returns
-        -------
-        list[ScoredDetection]
-            Only weapon-class detections are scored.
-            Hand detections are used to calculate proximity IoU.
-        """
-        ...
+        return scored_results
 
     def reset(self):
-        """Clear all persistence tracking state."""
-        ...
+        self.persistence_registry = {}

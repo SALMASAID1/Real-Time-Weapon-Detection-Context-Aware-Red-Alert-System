@@ -1,114 +1,95 @@
-"""
-src/inference/sahi_pipeline.py
-================================
-Slicing Aided Hyper Inference (SAHI) — tiled inference for 4K footage.
-
-Why SAHI is required
---------------------
-YOLOv11 processes images resized to 640×640. A 4K frame (3840×2160) downscaled
-to 640×640 compresses pixel information by a factor of ~36x. A weapon that
-occupies 100×100 pixels in the original frame becomes 17×17 pixels — below
-the detection threshold of most CNN backbones.
-
-SAHI preserves resolution by partitioning the frame into overlapping tiles,
-running inference on each at full resolution, then stitching results back.
-
-Tiling strategy
----------------
-  tile_size    : 640  — matches model input (no rescaling needed per tile)
-  overlap_ratio: 0.2  — 20% overlap on each edge (128px for 640 tiles)
-  stride       : 512  — effective step between tile origins
-
-For a 4K frame: ceil(3840/512) × ceil(2160/512) = 8×5 = 40 tiles per frame.
-With GPU batching (batch_size=8), this requires 5 forward passes per frame.
-
-Overlap rationale
------------------
-Weapons straddling tile boundaries appear partially in two adjacent tiles.
-With 20% overlap, any object larger than 128px will be fully visible in at
-least one tile. For sub-128px weapons, overlap is increased to 0.3.
-
-Post-merge NMS
---------------
-After stitching tile detections back to full-frame coordinates, predictions
-from overlapping tiles produce duplicate bounding boxes for the same object.
-A final NMS pass with iou_threshold=0.5 suppresses duplicates.
-
-Critical: this NMS threshold is DIFFERENT from the Hand-Weapon IoU threshold
-in threat_logic. Do not conflate them.
-
-Public API
-----------
-    SAHIPipeline(model, tile_size, overlap_ratio, batch_size, nms_iou_threshold)
-        .run(frame: np.ndarray) -> list[dict]
-            Returns merged, NMS-filtered detections in full-frame coordinates.
-"""
-
+import numpy as np
+import torch
+from typing import List, Dict
 
 class SAHIPipeline:
     """
     Tiled inference pipeline wrapping HybridWeaponDetector.
-
-    Parameters
-    ----------
-    model            : HybridWeaponDetector
-    tile_size        : int   — pixel side length of each square tile (640)
-    overlap_ratio    : float — fractional overlap between adjacent tiles (0.2)
-    batch_size       : int   — number of tiles per GPU forward pass (8)
-    nms_iou_threshold: float — IoU threshold for post-merge duplicate suppression (0.5)
     """
 
-    def run(self, frame):
-        """
-        Parameters
-        ----------
-        frame : np.ndarray  — Full-resolution BGR frame (e.g. 3840×2160).
+    def __init__(self, model, tile_size=640, overlap_ratio=0.2, batch_size=8, nms_iou_threshold=0.5):
+        self.model = model
+        self.tile_size = tile_size
+        self.overlap_ratio = overlap_ratio
+        self.batch_size = batch_size
+        self.nms_iou_threshold = nms_iou_threshold
+        self.stride = int(tile_size * (1 - overlap_ratio))
 
-        Returns
-        -------
-        list[dict]
-            Detections in full-frame pixel coordinates.
-            Same schema as HybridWeaponDetector.predict() output.
+    def run(self, frame: np.ndarray) -> List[Dict]:
         """
-        ...
+        Runs tiled inference on a full frame and merges results.
+        """
+        h, w = frame.shape[:2]
+        
+        # 1. Generate tiles and their origins
+        tiles_data = self._tile_frame(frame)
+        all_detections = []
+
+        # 2. Process tiles in batches for efficiency
+        for i in range(0, len(tiles_data), self.batch_size):
+            batch = tiles_data[i : i + self.batch_size]
+            batch_imgs = [t[0] for t in batch]
+            batch_origins = [t[1] for t in batch]
+
+            # In a real scenario, we'd batch these into a single tensor
+            # For now, we process them sequentially or via model.predict(batch)
+            for img, origin in zip(batch_imgs, batch_origins):
+                tile_dets = self.model.predict(img)
+                
+                # 3. Translate tile coordinates to full frame coordinates
+                translated_dets = self._to_full_frame_coords(tile_dets, origin)
+                all_detections.extend(translated_dets)
+
+        # 4. Final NMS to remove duplicates at tile boundaries
+        if not all_detections:
+            return []
+
+        return self._nms(all_detections, self.nms_iou_threshold)
 
     def _tile_frame(self, frame):
         """
-        Partition frame into overlapping tiles.
-
-        Returns
-        -------
-        list[tuple[np.ndarray, tuple[int,int]]]
-            Each element: (tile_image, (tile_origin_x, tile_origin_y))
+        Partitions the frame into overlapping tiles.
         """
-        ...
+        h, w = frame.shape[:2]
+        tiles = []
+
+        for y in range(0, h - self.tile_size + self.stride, self.stride):
+            for x in range(0, w - self.tile_size + self.stride, self.stride):
+                # Ensure we don't go out of bounds for the last tiles
+                curr_x = min(x, w - self.tile_size)
+                curr_y = min(y, h - self.tile_size)
+                
+                tile = frame[curr_y : curr_y + self.tile_size, curr_x : curr_x + self.tile_size]
+                tiles.append((tile, (curr_x, curr_y)))
+                
+                if x + self.tile_size >= w: break
+            if y + self.tile_size >= h: break
+
+        return tiles
 
     def _to_full_frame_coords(self, detections, tile_origin):
         """
-        Translate tile-relative bounding boxes to full-frame coordinates.
-
-        Parameters
-        ----------
-        detections  : list[dict]  — Detections from HybridWeaponDetector.
-        tile_origin : tuple[int, int]  — (x_offset, y_offset) of this tile.
-
-        Returns
-        -------
-        list[dict]  — Same detections with translated bbox coordinates.
+        Translates bbox coordinates from tile-space to full-frame space.
         """
-        ...
+        off_x, off_y = tile_origin
+        for det in detections:
+            x1, y1, x2, y2 = det['bbox']
+            det['bbox'] = [x1 + off_x, y1 + off_y, x2 + off_x, y2 + off_y]
+        return detections
 
     def _nms(self, detections, iou_threshold):
         """
-        Non-Maximum Suppression across all stitched tile detections.
-
-        Parameters
-        ----------
-        detections    : list[dict]  — All merged full-frame detections.
-        iou_threshold : float       — Overlap threshold for suppression.
-
-        Returns
-        -------
-        list[dict]  — Filtered, duplicate-free detection list.
+        Simple CPU-based NMS for merging detections from multiple tiles.
         """
-        ...
+        if not detections:
+            return []
+
+        # Convert to tensor for faster processing if available
+        bboxes = torch.tensor([d['bbox'] for d in detections], dtype=torch.float32)
+        scores = torch.tensor([d['confidence'] for d in detections], dtype=torch.float32)
+        
+        # Standard torchvision NMS
+        from torchvision.ops import nms
+        keep_indices = nms(bboxes, scores, iou_threshold)
+        
+        return [detections[i] for i in keep_indices]

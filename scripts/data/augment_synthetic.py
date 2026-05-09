@@ -16,11 +16,12 @@ def get_augmentation_pipeline():
     return A.Compose([
         A.OneOf([
             A.RandomRain(brightness_coefficient=0.9, drop_length=15, p=1),
-            A.RandomFog(fog_coef_lower=0.3, fog_coef_upper=0.5, alpha_coef=0.08, p=1),
+            A.RandomFog(p=1),
         ], p=0.7), # 70% chance of rain or fog
         A.RandomBrightnessContrast(brightness_limit=(-0.4, -0.2), contrast_limit=(-0.2, 0.2), p=0.8), # Night/Low-light
-        A.GaussNoise(var_limit=(10.0, 50.0), p=0.5), # CCTV sensor noise
+        A.GaussNoise(p=0.5), # CCTV sensor noise
         A.MotionBlur(blur_limit=7, p=0.3), # Moving camera/subjects
+        A.HorizontalFlip(p=0.2), # Ensures bbox-aware transform is present
     ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
 
 def process_split(split, p=0.2):
@@ -45,6 +46,9 @@ def process_split(split, p=0.2):
             
         # Read image
         image = cv2.imread(str(img_path))
+        if image is None:
+            print(f"[WARN] Skipping unreadable image: {img_path}")
+            continue
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         # Read labels

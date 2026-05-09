@@ -27,9 +27,26 @@ def fetch_from_zoo(dataset_name, splits, classes, max_samples, output_dir, tmp_n
         load_kwargs["split"] = splits[0]
 
     try:
-        dataset = foz.load_zoo_dataset(dataset_name, **load_kwargs)
+        # dataset = foz.load_zoo_dataset(dataset_name, **load_kwargs)
         
-        print(f"Exporting to {output_dir} in YOLO format...")
+        # print(f"Exporting to {output_dir} in YOLO format...")
+        # dataset.export(
+        #     export_dir=str(output_dir),
+        #     dataset_type=fo.types.YOLOv5Dataset,
+        #     label_field="ground_truth",
+        #     classes=classes
+        # )
+
+        dataset = foz.load_zoo_dataset(dataset_name, **load_kwargs)
+
+        jpg_ids = [
+            sample.id
+            for sample in dataset
+            if sample.filepath.lower().endswith((".jpg" ,".JPG"))
+        ]
+
+        dataset = dataset.select(jpg_ids)
+
         dataset.export(
             export_dir=str(output_dir),
             dataset_type=fo.types.YOLOv5Dataset,
@@ -44,7 +61,7 @@ def fetch_from_zoo(dataset_name, splits, classes, max_samples, output_dir, tmp_n
 
 def main():
     # 1. Fetch Hard Negatives from Open Images
-    oi_classes = ["Power tool", "Hammer", "Screwdriver", "Mobile phone", "Umbrella", "Handbag", "Remote control"]
+    oi_classes = ["Power tool", "Hammer", "Screwdriver", "Mobile phone", "Umbrella", "Handbag", "Remote control","Wrench","Scissors","Flashlight","Bottle","Toy"]
     fetch_from_zoo(
         dataset_name="open-images-v7",
         splits=["train", "validation", "test"],
