@@ -7,19 +7,23 @@ Write-Host "====================================================" -ForegroundCol
 
 # 1. Activate virtual environment if it exists
 if (Test-Path "venv\Scripts\Activate.ps1") {
-    Write-Host "[1/3] Activating virtual environment..."
+    Write-Host "[1/4] Activating virtual environment..."
     . venv\Scripts\Activate.ps1
 } else {
-    Write-Host "[1/3] Warning: venv not found. Ensure dependencies are installed." -ForegroundColor Yellow
+    Write-Host "[1/4] Warning: venv not found. Ensure dependencies are installed." -ForegroundColor Yellow
 }
 
 # 2. Fetch external datasets
-Write-Host "[2/3] Fetching external datasets (OI, COCO)..."
+Write-Host "[2/4] Fetching external datasets (OI, COCO)..."
 python scripts\data\fetch_external_data.py
 
 # 3. Build unified dataset
-Write-Host "[3/3] Assembling unified YOLO dataset..."
+Write-Host "[3/4] Assembling unified YOLO dataset..."
 python scripts\data\build_unified_dataset.py
+
+# 4. Synthetic Injection (Weather & Low-light)
+Write-Host "[4/4] Injecting synthetic weather and low-light conditions..."
+python scripts\data\augment_synthetic.py
 
 Write-Host ""
 Write-Host "====================================================" -ForegroundColor Green

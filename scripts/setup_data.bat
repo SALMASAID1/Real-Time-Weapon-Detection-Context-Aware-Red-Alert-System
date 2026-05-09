@@ -8,19 +8,23 @@ echo ====================================================
 
 :: 1. Activate virtual environment if it exists
 if exist venv\Scripts\activate.bat (
-    echo [1/3] Activating virtual environment...
+    echo [1/4] Activating virtual environment...
     call venv\Scripts\activate.bat
 ) else (
-    echo [1/3] Warning: venv not found. Ensure dependencies are installed.
+    echo [1/4] Warning: venv not found. Ensure dependencies are installed.
 )
 
 :: 2. Fetch external datasets
-echo [2/3] Fetching external datasets (OI, COCO)...
+echo [2/4] Fetching external datasets (OI, COCO)...
 python scripts\data\fetch_external_data.py
 
 :: 3. Build unified dataset
-echo [3/3] Assembling unified YOLO dataset...
+echo [3/4] Assembling unified YOLO dataset...
 python scripts\data\build_unified_dataset.py
+
+:: 4. Synthetic Injection (Weather & Low-light)
+echo [4/4] Injecting synthetic weather and low-light conditions...
+python scripts\data\augment_synthetic.py
 
 echo.
 echo ====================================================
