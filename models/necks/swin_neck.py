@@ -44,8 +44,12 @@ Dependencies
     torch >= 2.2.0
 """
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from timm.models.swin_transformer import SwinTransformerBlock
 
-class SwinNeck:
+class SwinNeck(nn.Module):
     """
     Wraps Swin Transformer blocks as a FPN-style neck.
 
@@ -66,6 +70,31 @@ class SwinNeck:
         Number of consecutive Swin Transformer blocks to stack.
         More blocks → richer global context but higher memory and latency.
     """
+    def __init__(self, in_channels, embed_dim=512, num_heads=8, window_size=7, num_blocks=2):
+        super().__init__()
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+        
+        # P4 projection
+        self.p4_proj_in = nn.Conv2d(in_channels["P4"], embed_dim, kernel_size=1)
+        
+        # Swin Blocks
+        self.swin_blocks = nn.ModuleList([
+            SwinTransformerBlock(
+                dim=embed_dim,
+                input_resolution=(640//16, 640//16), # Default for 640x640 at P4
+                num_heads=num_heads,
+                window_size=window_size,
+                shift_size=0 if i % 2 == 0 else window_size // 2
+            ) for i in range(num_blocks)
+        ])
+        
+        # P4 projection out
+        self.p4_proj_out = nn.Conv2d(embed_dim, in_channels["P4"], kernel_size=1)
+        
+        # FPN Lateral connections
+        self.lat_p4_to_p3 = nn.Conv2d(in_channels["P4"], in_channels["P3"], kernel_size=1)
+        self.lat_p4_to_p5 = nn.Conv2d(in_channels["P4"], in_channels["P5"], kernel_size=1)
 
     def forward(self, features: dict):
         """
@@ -82,4 +111,36 @@ class SwinNeck:
             P4 is globally enriched via Swin; P3 and P5 receive enriched P4
             context via lateral FPN connections.
         """
-        ...
+        p3, p4, p5 = features["P3"], features["P4"], features["P5"]
+        
+        # 1. Project P4 to embed_dim
+        x = self.p4_proj_in(p4)
+        B, C, H, W = x.shape
+        
+        # Reshape for Swin (B, H*W, C)
+        x = x.flatten(2).transpose(1, 2)
+        
+        # 2. Apply Swin blocks
+        for block in self.swin_blocks:
+            x = block(x)
+            
+        # Reshape back to (B, C, H, W)
+        x = x.transpose(1, 2).view(B, C, H, W)
+        
+        # 3. Project back to P4 channels
+        enriched_p4 = self.p4_proj_out(x)
+        
+        # 4. Fuse with P3 and P5
+        # Upsample P4 to P3 and add
+        p4_up = F.interpolate(self.lat_p4_to_p3(enriched_p4), size=p3.shape[2:], mode="bilinear", align_corners=False)
+        enriched_p3 = p3 + p4_up
+        
+        # Downsample P4 to P5 and add
+        p4_down = F.adaptive_max_pool2d(self.lat_p4_to_p5(enriched_p4), output_size=p5.shape[2:])
+        enriched_p5 = p5 + p4_down
+        
+        return {
+            "P3": enriched_p3,
+            "P4": enriched_p4,
+            "P5": enriched_p5
+        }

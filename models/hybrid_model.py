@@ -35,8 +35,13 @@ Weight loading strategy
    `freeze_backbone_epochs` epochs.
 """
 
+import torch
+import torch.nn as nn
+from models.backbones.yolo_backbone import YOLOBackbone
+from models.necks.swin_neck import SwinNeck
+from models.heads.detection_head import DetectionHead
 
-class HybridWeaponDetector:
+class HybridWeaponDetector(nn.Module):
     """
     Unified model: Backbone + Neck + Head.
 
@@ -47,6 +52,44 @@ class HybridWeaponDetector:
     nc               : int   — number of classes (3, matches dataset.yaml)
     device           : str   — "cuda" or "cpu"
     """
+    def __init__(self, backbone_variant="yolo11m.pt", pretrained=True, nc=3, device="cuda"):
+        super().__init__()
+        self.device = device
+        self.nc = nc
+        
+        # 1. Backbone
+        self.backbone = YOLOBackbone(
+            model_variant=backbone_variant,
+            pretrained=pretrained
+        )
+        
+        # Get channel counts from backbone
+        in_channels = self.backbone.out_channels
+        
+        # 2. Neck
+        self.neck = SwinNeck(
+            in_channels=in_channels,
+            embed_dim=512,
+            num_heads=8,
+            window_size=7,
+            num_blocks=2
+        )
+        
+        # 3. Head
+        self.head = DetectionHead(
+            in_channels=in_channels,
+            nc=nc
+        )
+        
+        self.to(device)
+
+    def forward(self, x):
+        """
+        Forward pass producing raw tensors.
+        """
+        features = self.backbone(x)
+        enriched_features = self.neck(features)
+        return self.head(enriched_features)
 
     def predict(self, frame):
         """
@@ -66,13 +109,29 @@ class HybridWeaponDetector:
               'class_name' : str
               'confidence' : float (0.0–1.0)
         """
-        ...
+        self.eval()
+        with torch.no.grad():
+            # For simplicity, assuming frame is already a pre-normalised tensor
+            # in shape (B, 3, H, W). In reality, preprocessing is needed.
+            if not isinstance(frame, torch.Tensor):
+                raise NotImplementedError("Numpy array preprocessing not fully implemented in stub.")
+                
+            frame = frame.to(self.device)
+            cls_logits, bbox_offsets, objectness = self.forward(frame)
+            
+            # Post-processing (NMS, decoding) would go here
+            # Returning raw outputs for now to test graph flow
+            return {"cls_logits": cls_logits, "bbox_offsets": bbox_offsets, "objectness": objectness}
 
     def save(self, path: str):
         """Save full model state_dict to path."""
-        ...
+        torch.save(self.state_dict(), path)
 
     @classmethod
     def load(cls, path: str, device: str = "cuda"):
         """Load a saved checkpoint and return a ready-to-use model instance."""
-        ...
+        model = cls(device=device)
+        model.load_state_dict(torch.load(path, map_location=device))
+        model.to(device)
+        model.eval()
+        return model

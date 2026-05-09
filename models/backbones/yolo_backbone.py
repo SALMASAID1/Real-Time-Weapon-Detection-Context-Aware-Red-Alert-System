@@ -42,8 +42,11 @@ Dependencies
     torch >= 2.2.0
 """
 
+import torch
+import torch.nn as nn
+from ultralytics import YOLO
 
-class YOLOBackbone:
+class YOLOBackbone(nn.Module):
     """
     Thin wrapper around Ultralytics YOLOv11/v12.
 
@@ -63,6 +66,43 @@ class YOLOBackbone:
         P3, P4, P5. These layer indices are model-variant-specific and must
         be verified against the parsed model graph after loading.
     """
+    def __init__(self, model_variant="yolo11m.pt", pretrained=True, freeze_backbone_epochs=5, intermediate_layers=[15, 18, 21]):
+        super().__init__()
+        self.freeze_backbone_epochs = freeze_backbone_epochs
+        self.intermediate_layers = intermediate_layers
+        
+        # Load the base model
+        base_model = YOLO(model_variant)
+        # Extract the nn.Module from the ultralytics wrapper
+        self.model = base_model.model.model
+        
+        # Store features
+        self.features = {}
+        
+        # Register forward hooks
+        def get_activation(name):
+            def hook(model, input, output):
+                self.features[name] = output
+            return hook
+        
+        # YOLOv8/v11 commonly uses layer indices for P3, P4, P5
+        # e.g., 15 (P3), 18 (P4), 21 (P5)
+        for name, layer_idx in zip(["P3", "P4", "P5"], self.intermediate_layers):
+            if hasattr(self.model, str(layer_idx)):
+                getattr(self.model, str(layer_idx)).register_forward_hook(get_activation(name))
+            else:
+                # If model is a sequential list
+                self.model[layer_idx].register_forward_hook(get_activation(name))
+                
+        # Get channel sizes by running a dummy forward pass
+        device = next(self.model.parameters()).device
+        dummy_input = torch.zeros(1, 3, 640, 640).to(device)
+        self.model(dummy_input)
+        self.out_channels = {
+            "P3": self.features["P3"].shape[1],
+            "P4": self.features["P4"].shape[1],
+            "P5": self.features["P5"].shape[1]
+        }
 
     def forward(self, x):
         """
@@ -83,12 +123,16 @@ class YOLOBackbone:
             C3/C4/C5 are variant-dependent channel counts (e.g. 128/256/512
             for yolo11n, 256/512/1024 for yolo11l).
         """
-        ...
+        self.features = {} # Clear previous features
+        _ = self.model(x)
+        return self.features
 
     def freeze(self):
         """Freeze all backbone parameters (called at epoch 0)."""
-        ...
+        for param in self.model.parameters():
+            param.requires_grad = False
 
     def unfreeze(self):
         """Unfreeze backbone parameters (called at epoch freeze_backbone_epochs)."""
-        ...
+        for param in self.model.parameters():
+            param.requires_grad = True
