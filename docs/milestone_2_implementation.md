@@ -61,12 +61,13 @@ The three independent sub-modules required a unified interface for the inference
 ## Step 5: Developing the Phase 2 Training Pipeline
 **File:** `notebooks/Phase2_Training.ipynb`
 
-To train this highly custom architecture, the standard `ultralytics` `.train()` function was insufficient. We built a custom PyTorch training pipeline.
+To train this highly custom architecture, we built a custom PyTorch training pipeline that bridges the hybrid model with standard YOLO data formats.
 
 **Key Actions:**
-1. **Modular Notebook Conversion:** Programmatically generated a Jupyter Notebook broken into distinct logical cells (Imports, Dataset Definition, Training Loop, Execution) for excellent readability and interactive debugging.
-2. **Training Logic:**
-   - Implemented an `optim.AdamW` optimizer.
-   - Built a mock `DummyYOLODataset` to verify tensor shape compatibility.
-   - Wrote the epoch loop to execute the forward pass, calculate dummy loss gradients, and step the optimizer.
-   - Implemented the backbone freezing schedule: training for 5 epochs with a frozen backbone at `lr=1e-4`, then unfreezing the backbone and dropping the learning rate to `lr=1e-5` for fine-tuning.
+1. **Real Data Loading:** Integrated `ultralytics.data.dataset.YOLODataset` to handle the 50k image dataset, including mosaic and mixup augmentations.
+2. **Target Matching (The "Fix"):** Implemented a spatial matching logic within the `DetectionHead` to map ground truth bounding boxes to the model's multi-scale anchors (P3, P4, P5).
+3. **Composite Loss:** Connected the classification Focal Loss and the Objectness loss into a single `.compute_loss()` method.
+4. **Training Strategy:**
+   - **Phase 1 (Epochs 1–10):** Backbone frozen; only Neck and Head are trained at `lr=1e-4` to stabilise global context.
+   - **Phase 2 (Epochs 10+):** Full model fine-tuning at `lr=1e-5` to refine low-level weapon features.
+   - **Persistence:** Automatic checkpointing to `models/weights/` every 5 epochs.
