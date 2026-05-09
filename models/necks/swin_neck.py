@@ -117,15 +117,15 @@ class SwinNeck(nn.Module):
         x = self.p4_proj_in(p4)
         B, C, H, W = x.shape
         
-        # Reshape for Swin (B, H*W, C)
-        x = x.flatten(2).transpose(1, 2)
+        # Reshape for Swin (B, H, W, C) - compatible with timm 1.0+
+        x = x.permute(0, 2, 3, 1)
         
         # 2. Apply Swin blocks
         for block in self.swin_blocks:
             x = block(x)
             
         # Reshape back to (B, C, H, W)
-        x = x.transpose(1, 2).view(B, C, H, W)
+        x = x.permute(0, 3, 1, 2)
         
         # 3. Project back to P4 channels
         enriched_p4 = self.p4_proj_out(x)

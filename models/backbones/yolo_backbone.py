@@ -66,15 +66,15 @@ class YOLOBackbone(nn.Module):
         P3, P4, P5. These layer indices are model-variant-specific and must
         be verified against the parsed model graph after loading.
     """
-    def __init__(self, model_variant="yolo11m.pt", pretrained=True, freeze_backbone_epochs=5, intermediate_layers=[15, 18, 21]):
+    def __init__(self, model_variant="yolo11m.pt", pretrained=True, freeze_backbone_epochs=5, intermediate_layers=[4, 6, 10]):
         super().__init__()
         self.freeze_backbone_epochs = freeze_backbone_epochs
         self.intermediate_layers = intermediate_layers
         
         # Load the base model
         base_model = YOLO(model_variant)
-        # Extract the nn.Module from the ultralytics wrapper
-        self.model = base_model.model.model
+        # Use the DetectionModel wrapper which handles internal routing (Concat layers, etc.)
+        self.model = base_model.model
         
         # Store features
         self.features = {}
@@ -85,14 +85,10 @@ class YOLOBackbone(nn.Module):
                 self.features[name] = output
             return hook
         
-        # YOLOv8/v11 commonly uses layer indices for P3, P4, P5
-        # e.g., 15 (P3), 18 (P4), 21 (P5)
+        # YOLOv11/v12 Backbone indices for P3, P4, P5 are typically 4, 6, 10
         for name, layer_idx in zip(["P3", "P4", "P5"], self.intermediate_layers):
-            if hasattr(self.model, str(layer_idx)):
-                getattr(self.model, str(layer_idx)).register_forward_hook(get_activation(name))
-            else:
-                # If model is a sequential list
-                self.model[layer_idx].register_forward_hook(get_activation(name))
+            layer = self.model.model[layer_idx]
+            layer.register_forward_hook(get_activation(name))
                 
         # Get channel sizes by running a dummy forward pass
         device = next(self.model.parameters()).device

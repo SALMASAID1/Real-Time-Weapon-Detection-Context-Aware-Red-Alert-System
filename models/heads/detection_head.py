@@ -129,29 +129,29 @@ class DetectionHead(nn.Module):
             
         return torch.cat(cls_logits, dim=1), torch.cat(bbox_offsets, dim=1), torch.cat(objectness, dim=1)
 
-    def build_targets(self, pred_shape, targets, device):
+    def build_targets(self, pred_shape, batch, device):
         """
         Simplified Matcher: Assigns ground truth to the nearest spatial anchor.
         pred_shape: (B, total_anchors, nc)
-        targets: Tensor of [batch_idx, cls, x, y, w, h] (normalised)
+        batch: Dictionary from YOLODataset containing 'cls', 'batch_idx', etc.
         """
         B, num_anchors, nc = pred_shape
         target_cls = torch.zeros((B, num_anchors, nc), device=device)
         target_obj = torch.zeros((B, num_anchors, 1), device=device)
         
-        if targets.shape[0] == 0:
+        cls = batch['cls']
+        batch_idx = batch['batch_idx']
+        
+        if cls.shape[0] == 0:
             return target_cls, target_obj
 
         # For each target, find the grid cell it falls into
-        # Note: This is a simplified version of Task Aligned Assigner for Milestone 2
-        for t in targets:
-            b_idx = int(t[0])
-            cls_idx = int(t[1])
-            # Map normalized x,y to anchor index (simplified)
-            # In reality, this depends on the stride of P3, P4, P5
-            # Here we just set the target class to 1 for the relevant batch
-            # and an arbitrary anchor to verify gradient flow.
-            # Production training would useTAL (Task Aligned Assigner).
+        for i in range(len(cls)):
+            b_idx = int(batch_idx[i])
+            cls_idx = int(cls[i])
+            
+            # Simplified: Assign to all anchors for this image to verify gradient flow
+            # In production, this would use Task Aligned Assigner (TAL)
             target_cls[b_idx, :, cls_idx] = 1.0 
             target_obj[b_idx, :, 0] = 1.0
 
@@ -162,10 +162,9 @@ class DetectionHead(nn.Module):
         Comprehensive loss calculation for the hybrid detector.
         """
         cls_logits, reg_offsets, objectness = preds
-        gt_targets = batch['bboxes'] # Shape depends on collate
         
         # 1. Match targets to anchors
-        target_cls, target_obj = self.build_targets(cls_logits.shape, batch['cls'], device)
+        target_cls, target_obj = self.build_targets(cls_logits.shape, batch, device)
         
         # 2. Classification Focal Loss
         loss_cls = self.focal_loss(cls_logits, target_cls)
