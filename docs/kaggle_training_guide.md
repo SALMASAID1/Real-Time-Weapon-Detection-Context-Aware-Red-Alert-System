@@ -14,8 +14,12 @@ This guide covers how to train your model on Kaggle using your **already process
    - Create the dataset.
 
 ## 2. Uploading your Source Code
-1. **Zip Code**: Zip these folders: `models/`, `utils/`, `requirements.txt`.
-2. **Upload**: You can upload this as another dataset or simply drag-and-drop it into your Kaggle Notebook's `/kaggle/working` directory.
+1. **Zip Code**: Zip these folders/files from your project root:
+   - `models/` (Required: Contains the architecture)
+   - `scripts/` (Contains config)
+   - `src/` (Contains helper logic)
+   - `requirements.txt`
+2. **Upload**: You can upload this as another Kaggle dataset (e.g., `Weapon-Detection-Source`) so you can easily attach it to your notebook.
 
 ---
 
