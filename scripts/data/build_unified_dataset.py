@@ -105,7 +105,7 @@ def write_data(items, split):
 
 def generate_yaml():
     """Create the data.yaml file for YOLOv11."""
-    yaml_content = f"""path: .
+    yaml_content = f"""#path: .
 train: train/images
 val: val/images
 test: test/images
