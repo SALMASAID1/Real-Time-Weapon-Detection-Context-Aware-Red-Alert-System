@@ -133,7 +133,7 @@ class AlertDispatcher:
         
         # 1. Audio Alert (Non-blocking in pygame)
         if self.alert_sound:
-            self.alert_sound.play()
+            self.alert_sound.play(loops=1)
             
         # 2. Telegram Alert (Fire-and-forget task)
         if self.bot and self.chat_id:
