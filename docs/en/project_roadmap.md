@@ -26,24 +26,37 @@ Our system utilizes a state-of-the-art **Two-Stream Inference Pipeline**:
 ## 🗺️ Project Roadmap
 
 ### Phase 1: Data Engineering & Foundation (Completed ✅)
-*   **Unified Dataset Build:** Aggregated 45k+ images (Open Images, SOHAS, Synthetic).
+*   **Unified Dataset Build:** Aggregated 50k+ images (Open Images, SOHAS, Synthetic).
 *   **EDA:** Visualized class imbalances and small-object geometry using FiftyOne.
 *   **Sanitization:** Standardized multi-source annotations to `[Weapon, Person, Confuser]`.
 
-### Phase 2: Hybrid Model Intelligence (Active ⚡)
+### Phase 2: Hybrid Model Intelligence (Completed ✅)
 *   **Architecture Stitching:** Integration of YOLOv11 backbones with Swin-Transformer Necks.
-*   **Custom Loss:** Implementation of Focal Loss to address "Confuser" class under-representation.
-*   **Phase-Aware Training:** Utilizing frozen-backbone warmups followed by full model fine-tuning.
+*   **Custom Loss:** Implementation of Focal Loss + CIoU for class imbalance and localization.
+*   **Phase-Aware Training:** Frozen-backbone warmups followed by differential learning rate fine-tuning.
+*   **Training Pipeline:** 7 iterations (v1→v7) with DFL decoding, NMS, and visual validation.
 
-### Phase 3: Inference Intelligence & XAI (Upcoming 🚀)
+### Phase 3: Inference Intelligence & XAI (Completed ✅)
 *   **SAHI Integration:** Tiled inference for 4K surveillance stream processing.
-*   **Hand-Weapon Proximity:** Proximity-based threat validation logic.
-*   **Explainable AI:** Grad-CAM heatmaps to visualize model decision-making.
+*   **Hand-Weapon Proximity:** GIoU-based proximity scoring with temporal persistence.
+*   **Explainable AI:** Grad-CAM heatmaps targeting the Swin Neck for model decision visualization.
+*   **Overlay Renderer:** INFERNO colormap compositing with JPEG encoding for WebSocket delivery.
 
-### Phase 4: Multimodal Alerting & UI (Future 🔮)
-*   **Notification Engine:** Telegram Bot and local audio (Pygame) integration.
-*   **React Dashboard:** Real-time monitoring UI with live threat history.
-*   **Edge Optimization:** TensorRT quantization for high-FPS deployment.
+### Phase 4: Multimodal Alerting & Dashboard (Completed ✅)
+*   **Notification Engine:** Telegram Bot (async, fire-and-forget) and local audio alerts (Pygame).
+*   **InferenceEngine:** Dual-cadence loop (SAHI + lightweight), two-stream (Weapon + Hand), queue-based WebSocket broadcasting.
+*   **React Dashboard:** Live monitoring (VideoCanvas), threat history (paginated REST), runtime settings (ThresholdPanel).
+*   **Alert Deduplication:** Spatial-key cooldown to prevent notification spam.
+
+### Phase 5: Optimization & Deployment (Active ⚡)
+*   **Model Training:** Full 50-epoch run with differential LR (`1e-5` backbone / `5e-5` head).
+*   **Edge Optimization:** TensorRT/OpenVINO quantization for ≥40 FPS inference.
+*   **System Validation:** mAP evaluation, FPR audit, end-to-end latency benchmarking.
+
+### Phase 6: Dataset Optimization (Planned 📋)
+*   **FiftyOne Brain:** Compute uniqueness scores to prune redundant weapon images.
+*   **Class Rebalancing:** Reduce Weapon:Confuser ratio for sharper decision boundaries.
+*   **Visual QA:** Manual inspection of hard negatives and mislabeled instances.
 
 ---
 

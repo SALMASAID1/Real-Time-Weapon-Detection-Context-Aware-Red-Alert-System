@@ -13,7 +13,7 @@ Instead of building a CNN from scratch, we wrapped the battle-tested `ultralytic
 
 **Key Actions:**
 1. **Module Wrapper:** Created the `YOLOBackbone` class inheriting from `torch.nn.Module`.
-2. **Forward Hooks:** To extract intermediate feature maps without interrupting the YOLO internal graph, PyTorch forward hooks were registered to the `[15, 18, 21]` layers. This successfully captures the **P3** (stride 8), **P4** (stride 16), and **P5** (stride 32) spatial levels.
+2. **Manual Layer Iteration:** To extract intermediate feature maps in a DataParallel-safe manner, we implemented a manual layer-by-layer forward pass that stops early after extracting features at indices `[4, 6, 10]` (for YOLOv11/v12). This successfully captures the **P3** (stride 8), **P4** (stride 16), and **P5** (stride 32) spatial levels without relying on hooks that can break under multi-GPU setups.
 3. **Training Control:** Implemented `.freeze()` and `.unfreeze()` methods. Freezing the backbone during the initial training epochs ensures that the randomly initialized Neck and Head do not corrupt the pre-trained CNN weights with unstable gradients.
 
 ---
@@ -55,7 +55,7 @@ The three independent sub-modules required a unified interface for the inference
    `Raw Frame -> YOLOBackbone -> SwinNeck -> DetectionHead -> (cls_logits, bbox_offsets, objectness)`
 2. **State Management:** Implemented `.save()` and `.load()` to atomically save the combined `state_dict` of all three components into a single `best.pt` file.
 3. **Optimized Prediction:** Finalized the `.predict()` method with full preprocessing:
-   - **BGR-to-RGB Flip:** Added a color space conversion to align OpenCV inputs with the backbone's RGB requirements.
+   - **BGR Preservation:** OpenCV frames are kept in BGR order throughout the pipeline — this matches the `YOLODataset` training pipeline that also uses BGR. No color space conversion is applied, ensuring consistency between training and inference.
    - **In-Graph Decoding:** Connected the head's decoding logic to provide ready-to-use detections directly to the inference engine.
 
 ---

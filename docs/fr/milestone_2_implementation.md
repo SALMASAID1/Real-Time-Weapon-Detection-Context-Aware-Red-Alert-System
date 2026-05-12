@@ -13,7 +13,7 @@ Au lieu de construire un CNN à partir de zéro, nous avons enveloppé le modèl
 
 **Actions Clés :**
 1. **Wrapper de Module** : Création de la classe `YOLOBackbone` héritant de `torch.nn.Module`.
-2. **Hooks de Passage Avant (Forward Hooks)** : Pour extraire des cartes de caractéristiques intermédiaires sans interrompre le graphe interne de YOLO, des hooks de passage avant PyTorch ont été enregistrés sur les couches `[15, 18, 21]`. Cela permet de capturer avec succès les niveaux spatiaux **P3** (foulée 8), **P4** (foulée 16) et **P5** (foulée 32).
+2. **Itération Manuelle des Couches** : Pour extraire des cartes de caractéristiques intermédiaires de manière compatible avec DataParallel, nous avons implémenté un passage avant couche par couche qui s'arrête prématurément après l'extraction des caractéristiques aux indices `[4, 6, 10]` (pour YOLOv11/v12). Cela permet de capturer avec succès les niveaux spatiaux **P3** (foulée 8), **P4** (foulée 16) et **P5** (foulée 32) sans s'appuyer sur des hooks qui peuvent échouer en configuration multi-GPU.
 3. **Contrôle de l'Entraînement** : Implémentation des méthodes `.freeze()` (geler) et `.unfreeze()` (dégeler). Le gel du backbone pendant les premières époques d'entraînement garantit que le Cou et la Tête initialisés de manière aléatoire ne corrompent pas les poids CNN pré-entraînés avec des gradients instables.
 
 ---
@@ -55,7 +55,7 @@ Les trois sous-modules indépendants nécessitaient une interface unifiée pour 
    `Image Brute -> YOLOBackbone -> SwinNeck -> DetectionHead -> (cls_logits, bbox_offsets, objectness)`
 2. **Gestion de l'État** : Implémentation de `.save()` et `.load()` pour sauvegarder de manière atomique le `state_dict` combiné des trois composants dans un seul fichier `best.pt`.
 3. **Prédiction Optimisée** : Finalisation de la méthode `.predict()` avec un prétraitement complet :
-   - **Inversion BGR-vers-RGB** : Ajout d'une conversion d'espace colorimétrique pour aligner les entrées OpenCV avec les exigences RGB du backbone.
+   - **Préservation BGR** : Les trames OpenCV sont conservées en ordre BGR tout au long du pipeline — cela correspond au pipeline d'entraînement `YOLODataset` qui utilise également BGR. Aucune conversion d'espace colorimétrique n'est appliquée, garantissant la cohérence entre l'entraînement et l'inférence.
    - **Décodage Intégré au Graphe** : Connexion de la logique de décodage de la tête pour fournir des détections prêtes à l'emploi directement au moteur d'inférence.
 
 ---

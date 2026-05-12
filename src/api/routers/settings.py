@@ -31,13 +31,21 @@ Validated fields (see src/api/schemas/detection.py :: SystemSettings)
   gradcam_on_high     : Toggle Grad-CAM generation (performance impact)
 """
 
-from fastapi import APIRouter
+import logging
+from fastapi import APIRouter, Request
 from src.api.schemas.detection import SystemSettings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # Module-level settings singleton — shared reference with InferenceEngine
 _current_settings = SystemSettings()
+
+
+def get_current_settings() -> SystemSettings:
+    """Public accessor so main.py can read the initial settings at startup."""
+    return _current_settings
 
 
 @router.get("", response_model=SystemSettings)
@@ -47,12 +55,29 @@ async def get_settings():
 
 
 @router.put("", response_model=SystemSettings)
-async def update_settings(new_settings: SystemSettings):
+async def update_settings(new_settings: SystemSettings, request: Request):
     """
     Apply new settings. All fields are replaced atomically.
     Validated by Pydantic before assignment — invalid ranges are rejected
     with HTTP 422 before reaching the inference engine.
+
+    The engine's settings dict is updated in-place so changes propagate
+    to the running inference loop on the next frame cycle.
     """
     global _current_settings
     _current_settings = new_settings
+
+    # Propagate to the running InferenceEngine if available
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None:
+        engine.settings["conf_threshold"] = new_settings.conf_threshold
+        engine.settings["iou_threshold"] = new_settings.iou_threshold
+        engine.settings["sahi_every_n"] = new_settings.sahi_every_n
+        logger.info(
+            f"Settings propagated to engine: "
+            f"conf={new_settings.conf_threshold}, "
+            f"iou={new_settings.iou_threshold}, "
+            f"sahi_n={new_settings.sahi_every_n}"
+        )
+
     return _current_settings

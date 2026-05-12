@@ -75,7 +75,15 @@ class SAHIPipeline:
         """
         off_x, off_y = tile_origin
         for det in detections:
-            x1, y1, x2, y2 = det['bbox']
+            bbox = det['bbox']
+            # Convert from normalized [0, 1] to tile pixel coords if they are normalized
+            if all(0 <= v <= 1.0 for v in bbox):
+                x1 = bbox[0] * self.tile_size
+                y1 = bbox[1] * self.tile_size
+                x2 = bbox[2] * self.tile_size
+                y2 = bbox[3] * self.tile_size
+            else:
+                x1, y1, x2, y2 = bbox
             det['bbox'] = [x1 + off_x, y1 + off_y, x2 + off_x, y2 + off_y]
         return detections
 

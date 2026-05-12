@@ -64,12 +64,14 @@ from ultralytics import YOLO
 
 from src.api.routers import stream, threats, settings as settings_router
 from src.api.routers.stream import manager as ws_manager
+from src.api.routers.settings import get_current_settings
 from models.hybrid_model import HybridWeaponDetector
 from src.inference.sahi_pipeline import SAHIPipeline
 from src.threat_logic.threat_scorer import ThreatScorer
 from src.threat_logic.iou_calculator import IoUCalculator
 from src.threat_logic.alert_dispatcher import AlertDispatcher
 from src.inference.engine import InferenceEngine
+from src.xai.gradcam import GradCAMGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -110,35 +112,44 @@ async def lifespan(app: FastAPI):
         try:
             weapon_model.load_state_dict(torch.load(weights_path, map_location=device))
             logger.info(f"Loaded weapon model weights from {weights_path}")
+            if device == "cuda":
+                weapon_model.half()
+                logger.info("Weapon model converted to FP16 (half precision).")
         except Exception as e:
             logger.error(f"Failed to load weapon weights: {e}")
             
     hand_model = YOLO(os.getenv("HAND_MODEL_PATH", "yolov8n.pt"))
     
     # 2. Logic & Pipelines
+    initial_settings = get_current_settings()
+
     sahi_pipeline = SAHIPipeline(
         weapon_model,
-        conf_threshold=float(os.getenv("CONF_THRESHOLD", 0.25)),
-        iou_threshold=float(os.getenv("IOU_THRESHOLD", 0.45))
+        conf_threshold=initial_settings.conf_threshold,
+        iou_threshold=initial_settings.iou_threshold
     )
     iou_calc = IoUCalculator(mode="giou")
     threat_scorer = ThreatScorer(iou_calc)
     
-    # Grad-CAM is optional (placeholder for Milestone 3/4 integration)
-    gradcam = None 
+    # Grad-CAM — now initialized with the real model
+    gradcam = GradCAMGenerator(weapon_model)
     
+    log_path = os.getenv("THREAT_LOG_PATH", "data/logs/threats.jsonl")
+
     alert_dispatcher = AlertDispatcher(
         telegram_token=os.getenv("TELEGRAM_BOT_TOKEN"),
         chat_id=os.getenv("TELEGRAM_CHAT_ID"),
-        audio_path=os.getenv("AUDIO_ALERT_PATH", "assets/alert.wav"),
-        log_path=os.getenv("THREAT_LOG_PATH", "data/logs/threats.jsonl")
+        audio_path=os.getenv("AUDIO_ALERT_PATH", "data/audio/alert.wav"),
+        log_path=log_path
     )
     
     # 3. Engine Orchestration
     settings = {
-        "sahi_every_n": int(os.getenv("SAHI_EVERY_N", 3)),
-        "conf_threshold": float(os.getenv("CONF_THRESHOLD", 0.25)),
-        "iou_threshold": float(os.getenv("IOU_THRESHOLD", 0.45)),
+        "inference_every_n": initial_settings.inference_every_n,
+        "sahi_every_n": initial_settings.sahi_every_n,
+        "conf_threshold": initial_settings.conf_threshold,
+        "iou_threshold": initial_settings.iou_threshold,
+        "gradcam_on_high": initial_settings.gradcam_on_high,
         "camera_id": os.getenv("CAMERA_ID", "CAM-01")
     }
     
@@ -157,7 +168,10 @@ async def lifespan(app: FastAPI):
         camera_source=camera_source
     )
     
+    # Store references on app.state for router access
     app.state.engine = engine
+    app.state.threat_log_path = log_path
+
     engine.start()
     
     # 4. Background Broadcaster

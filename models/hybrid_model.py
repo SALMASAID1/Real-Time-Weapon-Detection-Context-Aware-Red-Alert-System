@@ -104,7 +104,7 @@ class HybridWeaponDetector(nn.Module):
         Run a full forward pass and decode results.
         """
         self.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             # Basic preprocessing (BGR to RGB and Normalisation)
             if isinstance(frame, np.ndarray):
                 # Simple Resize if not 640x640
@@ -116,6 +116,10 @@ class HybridWeaponDetector(nn.Module):
                 x = x.unsqueeze(0).to(self.device)
             else:
                 x = frame.to(self.device)
+                
+            # If the model is in half precision, input must also be half precision
+            if next(self.parameters()).dtype == torch.float16:
+                x = x.half()
                 
             # Forward pass
             preds = self.forward(x)

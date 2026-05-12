@@ -26,24 +26,37 @@ Notre système utilise un pipeline **d'Inférence à Double Flux** à la pointe 
 ## 🗺️ Feuille de Route du Projet
 
 ### Phase 1 : Ingénierie des Données et Fondations (Terminée ✅)
-*   **Construction du Jeu de Données Unifié :** Agrégation de 45k+ images (Open Images, SOHAS, Synthétique).
+*   **Construction du Jeu de Données Unifié :** Agrégation de 50k+ images (Open Images, SOHAS, Synthétique).
 *   **EDA :** Visualisation des déséquilibres de classes et de la géométrie des petits objets avec FiftyOne.
 *   **Assainissement :** Standardisation des annotations vers le schéma `[Weapon, Person, Confuser]`.
 
-### Phase 2 : Intelligence du Modèle Hybride (Active ⚡)
+### Phase 2 : Intelligence du Modèle Hybride (Terminée ✅)
 *   **Assemblage de l'Architecture :** Intégration des backbones YOLOv11 avec les Necks Swin-Transformer.
-*   **Perte Personnalisée :** Implémentation de la Focal Loss pour gérer la sous-représentation de la classe "Confuseur".
-*   **Entraînement Sensible aux Phases :** Utilisation de phases de "warmup" à backbone gelé suivies d'un réglage fin complet.
+*   **Perte Personnalisée :** Implémentation de la Focal Loss + CIoU pour le déséquilibre de classes et la localisation.
+*   **Entraînement Sensible aux Phases :** Warmup à backbone gelé suivi d'un réglage fin à taux d'apprentissage différentiels.
+*   **Pipeline d'Entraînement :** 7 itérations (v1→v7) avec décodage DFL, NMS et validation visuelle.
 
-### Phase 3 : Intelligence d'Inférence et XAI (À venir 🚀)
+### Phase 3 : Intelligence d'Inférence et XAI (Terminée ✅)
 *   **Intégration SAHI :** Inférence par tuiles pour le traitement des flux de surveillance 4K.
-*   **Proximité Mains-Armes :** Logique de validation des menaces basée sur la proximité.
-*   **IA Explicable (XAI) :** Cartes de chaleur Grad-CAM pour visualiser la prise de décision du modèle.
+*   **Proximité Mains-Armes :** Score de proximité GIoU avec persistance temporelle.
+*   **IA Explicable (XAI) :** Cartes de chaleur Grad-CAM ciblant le Cou Swin pour la visualisation des décisions du modèle.
+*   **Rendu de Superposition :** Compositage avec colormap INFERNO et encodage JPEG pour livraison WebSocket.
 
-### Phase 4 : Alertes Multimodales et UI (Futur 🔮)
-*   **Moteur de Notification :** Intégration du Bot Telegram et des alertes audio locales (Pygame).
-*   **Tableau de Bord React :** Interface de surveillance en temps réel avec historique des menaces.
-*   **Optimisation Edge :** Quantification TensorRT pour un déploiement à haut débit (FPS).
+### Phase 4 : Alertes Multimodales et Tableau de Bord (Terminée ✅)
+*   **Moteur de Notification :** Bot Telegram (asynchrone, fire-and-forget) et alertes audio locales (Pygame).
+*   **Moteur d'Inférence :** Boucle à double cadence (SAHI + léger), double flux (Armes + Mains), diffusion par file d'attente WebSocket.
+*   **Tableau de Bord React :** Surveillance en direct (VideoCanvas), historique des menaces (REST paginé), paramètres en temps réel (ThresholdPanel).
+*   **Déduplication des Alertes :** Période de refroidissement par clé spatiale pour éviter le spam de notifications.
+
+### Phase 5 : Optimisation et Déploiement (Active ⚡)
+*   **Entraînement du Modèle :** Exécution complète de 50 époques avec LR différentiel (`1e-5` backbone / `5e-5` head).
+*   **Optimisation Edge :** Quantification TensorRT/OpenVINO pour une inférence à ≥40 FPS.
+*   **Validation Système :** Évaluation mAP, audit TFP, benchmarking de latence de bout en bout.
+
+### Phase 6 : Optimisation du Jeu de Données (Planifiée 📋)
+*   **FiftyOne Brain :** Calcul des scores d'unicité pour élaguer les images d'armes redondantes.
+*   **Rééquilibrage des Classes :** Réduction du ratio Arme:Confuseur pour des frontières de décision plus nettes.
+*   **QA Visuelle :** Inspection manuelle des négatifs difficiles et des instances mal étiquetées.
 
 ---
 

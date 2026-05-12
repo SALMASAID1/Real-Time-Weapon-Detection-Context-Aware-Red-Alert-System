@@ -72,8 +72,10 @@ class SystemSettings(BaseModel):
                                       description="Minimum detection confidence")
     alert_threshold:    float = Field(0.70, ge=0.0, le=1.0,
                                       description="Composite score threshold for Red Alert")
-    sahi_every_n:       int   = Field(3,    ge=1, le=10,
-                                      description="Run full SAHI pass every N frames")
+    inference_every_n:  int   = Field(3,    ge=1, le=10,
+                                      description="Run any inference every N frames")
+    sahi_every_n:       int   = Field(5,    ge=1, le=10,
+                                      description="Run full SAHI pass every N frames (relative to inference frames)")
     persist_max_frames: int   = Field(10,   ge=1, le=60,
                                       description="Frame count for persistence score saturation")
     telegram_enabled:   bool  = True

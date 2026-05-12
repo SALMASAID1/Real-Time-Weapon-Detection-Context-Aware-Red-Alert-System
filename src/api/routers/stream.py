@@ -58,13 +58,17 @@ class ConnectionManager:
 
     async def broadcast(self, camera_id: str, message: str):
         """Send JSON message to all clients watching this camera."""
+        connections = self.active.get(camera_id, set())
+        if not connections:
+            return
         dead = set()
-        for ws in self.active.get(camera_id, set()):
+        for ws in connections:
             try:
                 await ws.send_text(message)
-            except WebSocketDisconnect:
+            except (WebSocketDisconnect, Exception):
                 dead.add(ws)
-        self.active[camera_id] -= dead
+        if dead:
+            self.active.get(camera_id, set()).difference_update(dead)
 
 
 manager = ConnectionManager()
