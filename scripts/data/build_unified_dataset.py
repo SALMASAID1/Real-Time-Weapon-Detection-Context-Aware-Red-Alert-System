@@ -19,7 +19,7 @@ def setup_dirs():
             (config.YOLO_DATASET_DIR / split / dtype).mkdir(parents=True, exist_ok=True)
 
 def process_label(label_path, out_label_path, class_map, map_all_to=None):
-    """Read, map, and write YOLO labels."""
+    """Read, map, and write YOLO labels with sanitization."""
     if not label_path.exists():
         return False
     
@@ -28,12 +28,21 @@ def process_label(label_path, out_label_path, class_map, map_all_to=None):
         lines = f.readlines()
         
     out_lines = []
+    seen_labels = set() # To track duplicates in this file
+    
     for line in lines:
-        parts = line.strip().split()
+        line = line.strip()
+        if not line:
+            continue
+            
+        parts = line.split()
         if len(parts) >= 5:
             try:
-                cls_id = int(parts[0])
+                # 1. Strip segmentation data (force boxes: class + 4 coords)
+                parts = parts[:5]
                 
+                # 2. Map class
+                cls_id = int(parts[0])
                 if map_all_to is not None:
                     new_cls = map_all_to
                 elif class_map and cls_id in class_map:
@@ -44,13 +53,22 @@ def process_label(label_path, out_label_path, class_map, map_all_to=None):
                 if new_cls not in config.CLASS_MAP.values():
                     valid = False
                 parts[0] = str(new_cls)
-                out_lines.append(" ".join(parts))
+                
+                # 3. Deduplicate (check if this exact label already exists)
+                label_str = " ".join(parts)
+                if label_str not in seen_labels:
+                    out_lines.append(label_str)
+                    seen_labels.add(label_str)
+                    
             except ValueError:
                 valid = False
     
     if not valid:
         print(f"WARNING: Invalid format or class detected in {label_path}")
 
+    # Only write if we actually have lines (prevents empty files being treated as background unintentionally if corrupted)
+    # Actually, background images SHOULD have empty label files in YOLO. 
+    # But if it was a valid image that became empty due to filtering, it's now a background.
     with open(out_label_path, "w") as f:
         f.write("\n".join(out_lines))
         

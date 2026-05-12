@@ -19,8 +19,10 @@ This project implements a state-of-the-art weapon detection system using YOLOv11
 - `docs/`: Technical documentation and implementation guides.
 
 ## Documentation
-- **EDA Findings**: [Detailed analysis of dataset geometry and architecture implications](docs/EDA_Findings.md).
-- **Training Guides**: Hybrid Colab/Kaggle setup guides in `docs/`.
+- **Project Roadmap**: [Detailed project vision and development phases (EN)](docs/en/project_roadmap.md) | [Feuille de route (FR)](docs/fr/project_roadmap.md)
+- **Current Status**: [Active development and training status (EN)](docs/en/project_status.md) | [État du projet (FR)](docs/fr/project_status.md)
+- **EDA Findings**: [Detailed analysis of dataset geometry](docs/en/EDA_Findings.md)
+- **Implementation Guides**: Technical deep-dives in `docs/en/` and `docs/fr/`.
 
 ## Setup
 1. Create a virtual environment: `python -m venv venv`
