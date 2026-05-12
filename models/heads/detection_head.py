@@ -340,10 +340,14 @@ class DetectionHead(nn.Module):
             # Convert ltrb distances (in stride units) to [cx, cy, w, h] normalized
             imgsz = 640.0
             stride_norm = fg_strides / imgsz  # normalize stride to [0,1]
-            pred_cx = fg_centers[:, 0:1]  # already normalized
-            pred_cy = fg_centers[:, 1:2]
+            
+            # Correct BBox center: cx_new = cx_anchor + (r - l) / 2
+            # fg_dist: [l, t, r, b]
             pred_w  = (fg_dist[:, 0:1] + fg_dist[:, 2:3]) * stride_norm
             pred_h  = (fg_dist[:, 1:2] + fg_dist[:, 3:4]) * stride_norm
+            pred_cx = fg_centers[:, 0:1] + (fg_dist[:, 2:3] - fg_dist[:, 0:1]) / 2 * stride_norm
+            pred_cy = fg_centers[:, 1:2] + (fg_dist[:, 3:4] - fg_dist[:, 1:2]) / 2 * stride_norm
+            
             pred_boxes = torch.cat([pred_cx, pred_cy, pred_w, pred_h], dim=1)  # (num_fg, 4)
 
             gt_boxes = target_bbox[fg_mask]  # (num_fg, 4)
@@ -352,6 +356,82 @@ class DetectionHead(nn.Module):
         # Loss weights (following YOLO convention: box=7.5, cls=0.5, obj=1.5)
         loss = 7.5 * loss_box + 0.5 * loss_cls + 1.5 * loss_obj
         return loss
+
+    def decode_predictions(self, preds, conf_thres=0.25, iou_thres=0.45):
+        """
+        Decodes raw head outputs into filtered detections.
+        
+        Parameters
+        ----------
+        preds      : tuple (cls_logits, reg_offsets, objectness)
+        conf_thres : float — confidence threshold for filtering
+        iou_thres  : float — NMS IoU threshold
+        
+        Returns
+        -------
+        List of dicts: [{"bbox": [x1, y1, x2, y2], "class_id": int, "confidence": float}]
+        """
+        from torchvision.ops import nms
+        
+        cls_logits, reg_offsets, objectness = preds
+        device = cls_logits.device
+        
+        # 1. Compute class probabilities (cls * obj)
+        probs = torch.sigmoid(cls_logits) * torch.sigmoid(objectness)
+        conf, class_ids = torch.max(probs, dim=2)  # (B, total_anchors)
+        
+        # 2. Filter by threshold
+        mask = conf > conf_thres
+        if not mask.any():
+            return []
+            
+        # For simplicity, we process only the first image in the batch (inference context)
+        b = 0
+        img_conf = conf[b][mask[b]]
+        img_class_ids = class_ids[b][mask[b]]
+        img_reg_offsets = reg_offsets[b][mask[b]]
+        
+        # 3. Decode Bounding Boxes
+        anchor_centers, anchor_strides = self._generate_anchor_centers(device)
+        fg_centers = anchor_centers[mask[b]]
+        fg_strides = anchor_strides[mask[b]]
+        
+        # DFL decode: softmax over reg_max bins -> expected value per side
+        num_fg = img_reg_offsets.shape[0]
+        fg_reg = img_reg_offsets.reshape(num_fg, 4, self.reg_max)
+        fg_reg = F.softmax(fg_reg, dim=-1)
+        proj = torch.arange(self.reg_max, dtype=torch.float32, device=device)
+        fg_dist = (fg_reg * proj).sum(dim=-1) # (num_fg, 4) - ltrb in stride units
+        
+        # Convert ltrb to [x1, y1, x2, y2] normalized
+        imgsz = 640.0
+        stride_norm = fg_strides / imgsz
+        
+        # pred_ltrb = [l, t, r, b]
+        # x1 = cx - l * stride
+        # y1 = cy - t * stride
+        # x2 = cx + r * stride
+        # y2 = cy + b * stride
+        x1 = fg_centers[:, 0:1] - fg_dist[:, 0:1] * stride_norm
+        y1 = fg_centers[:, 1:2] - fg_dist[:, 1:2] * stride_norm
+        x2 = fg_centers[:, 0:1] + fg_dist[:, 2:3] * stride_norm
+        y2 = fg_centers[:, 1:2] + fg_dist[:, 3:4] * stride_norm
+        
+        boxes = torch.cat([x1, y1, x2, y2], dim=1).clamp(0, 1)
+        
+        # 4. Non-Maximum Suppression (NMS)
+        keep = nms(boxes, img_conf, iou_thres)
+        
+        results = []
+        for i in keep:
+            results.append({
+                "bbox": boxes[i].tolist(),
+                "class_id": int(img_class_ids[i]),
+                "class_name": ["Weapon", "Person", "Confuser"][int(img_class_ids[i])],
+                "confidence": float(img_conf[i])
+            })
+            
+        return results
 
     def focal_loss(self, pred_logits, targets, gamma: float = None, alpha: float = None):
         gamma = gamma if gamma is not None else self.gamma

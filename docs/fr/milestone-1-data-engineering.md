@@ -26,8 +26,8 @@ En utilisant la bibliothèque `albumentations`, nous avons "injecté" des condit
 | Répartition | Total d'Images | Boîtes d'Armes | Boîtes de Personnes | Boîtes de Confuseurs |
 | :--- | :--- | :--- | :--- | :--- |
 | **Train** | 41 444 | 32 737 | 30 061 | 13 359 |
-| **Test** | 4 764 | 3 727 | 3 471 | 1 691 |
-| **Val** | 4 759 | 3 686 | 3 372 | 1 564 |
+| **Test** | 4 764 | 3 726 | 3 471 | 1 691 |
+| **Val** | 4 759 | 3 684 | 3 372 | 1 564 |
 | **Total** | **50 967** | **40 150** | **36 904** | **16 614** |
 
 ## Scripts du Pipeline

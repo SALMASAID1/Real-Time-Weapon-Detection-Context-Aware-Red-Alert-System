@@ -99,7 +99,7 @@ class HybridWeaponDetector(nn.Module):
         enriched_features = self.neck(features)
         return self.head(enriched_features)
 
-    def predict(self, frame, conf_threshold=0.25):
+    def predict(self, frame, conf_threshold=0.25, iou_threshold=0.45):
         """
         Run a full forward pass and decode results.
         """
@@ -109,39 +109,24 @@ class HybridWeaponDetector(nn.Module):
             if isinstance(frame, np.ndarray):
                 # Simple Resize if not 640x640
                 if frame.shape[:2] != (640, 640):
-                    import cv2
                     frame = cv2.resize(frame, (640, 640))
                 
-                x = torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0
+                # BGR to RGB flip (OpenCV standard to YOLO/Swin expectation)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                x = torch.from_numpy(frame_rgb).permute(2, 0, 1).float() / 255.0
                 x = x.unsqueeze(0).to(self.device)
             else:
                 x = frame.to(self.device)
                 
-            cls_logits, bbox_offsets, objectness = self.forward(x)
+            # Forward pass
+            preds = self.forward(x)
             
-            # Simple decoding for Milestone 2/3 health check
-            # In production, this would use TAL/Anchor decoding
-            probs = torch.sigmoid(cls_logits) * torch.sigmoid(objectness)
-            conf, class_ids = torch.max(probs, dim=2)
-            
-            mask = conf > conf_threshold
-            
-            # Map batch=0 for simplicity in this prediction method
-            detections = []
-            valid_conf = conf[0][mask[0]]
-            valid_ids = class_ids[0][mask[0]]
-            
-            # Placeholder for bbox decoding (Milestone 3 Task)
-            # For now, we return valid confidence and classes to verify the pipeline
-            for c, cid in zip(valid_conf, valid_ids):
-                detections.append({
-                    "bbox": [0, 0, 50, 50], # Placeholder box
-                    "class_id": int(cid),
-                    "class_name": ["Weapon", "Person", "Confuser"][int(cid)],
-                    "confidence": float(c)
-                })
-                
-            return detections
+            # Decode using the head's logic (NMS + BBox transform)
+            return self.head.decode_predictions(
+                preds, 
+                conf_thres=conf_threshold, 
+                iou_thres=iou_threshold
+            )
 
     def save(self, path: str):
         """Save full model state_dict to path."""

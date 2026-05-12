@@ -38,10 +38,10 @@ Standard CNN pyramids aggregate features purely through local convolutions and s
 Weapon detection datasets suffer from massive background class imbalance (easy "confuser" objects). We implemented a decoupled head with Focal Loss to address this.
 
 **Key Actions:**
-1. **Decoupled Architecture:** Created three separate convolutional branches (Classification, Box Regression, Objectness) for each feature level (P3, P4, P5), following the YOLOX design pattern.
-2. **Focal Loss Integration:** Authored a custom `focal_loss()` function using PyTorch's `binary_cross_entropy_with_logits`.
-   - **Gamma (`γ=2.0`):** Acts as a focusing exponent that aggressively down-weights the loss contribution from easily classified background patches, forcing the network to focus on hard samples (e.g., partially occluded weapons).
-   - **Alpha (`α=0.25`):** Acts as the balancing factor for class frequencies.
+3. **BBox Decoding & NMS (The "Fix"):** Implemented the `decode_predictions()` pipeline to convert raw model outputs into localized bounding boxes.
+   - **DFL Decoding:** Implemented Distribution Focal Loss (DFL) decoding to transform regression offsets into spatial distances (`ltrb`).
+   - **Coordinate Transformation:** Added logic to map stride-relative distances back to normalized `[x1, y1, x2, y2]` coordinates.
+   - **NMS:** Integrated `torchvision.ops.nms` to prune overlapping detections and ensure one detection per weapon.
 
 ---
 
@@ -54,7 +54,9 @@ The three independent sub-modules required a unified interface for the inference
 1. **Graph Stitching:** Created the `HybridWeaponDetector` module. The `forward()` pass elegantly pipes data: 
    `Raw Frame -> YOLOBackbone -> SwinNeck -> DetectionHead -> (cls_logits, bbox_offsets, objectness)`
 2. **State Management:** Implemented `.save()` and `.load()` to atomically save the combined `state_dict` of all three components into a single `best.pt` file.
-3. **Inference Loop:** Set up a stub for `.predict()` to handle incoming numpy arrays or SAHI tiles during active deployment.
+3. **Optimized Prediction:** Finalized the `.predict()` method with full preprocessing:
+   - **BGR-to-RGB Flip:** Added a color space conversion to align OpenCV inputs with the backbone's RGB requirements.
+   - **In-Graph Decoding:** Connected the head's decoding logic to provide ready-to-use detections directly to the inference engine.
 
 ---
 
@@ -65,9 +67,9 @@ To train this highly custom architecture, we built a custom PyTorch training pip
 
 **Key Actions:**
 1. **Real Data Loading:** Integrated `ultralytics.data.dataset.YOLODataset` to handle the 50k image dataset, including mosaic and mixup augmentations.
-2. **Target Matching (The "Fix"):** Implemented a spatial matching logic within the `DetectionHead` to map ground truth bounding boxes to the model's multi-scale anchors (P3, P4, P5).
-3. **Composite Loss:** Connected the classification Focal Loss and the Objectness loss into a single `.compute_loss()` method.
-4. **Training Strategy:**
-   - **Phase 1 (Epochs 1–10):** Backbone frozen; only Neck and Head are trained at `lr=1e-4` to stabilise global context.
-   - **Phase 2 (Epochs 10+):** Full model fine-tuning at `lr=1e-5` to refine low-level weapon features.
-   - **Persistence:** Automatic checkpointing to `models/weights/` every 5 epochs.
+2. **Target Matching:** Implemented a spatial matching logic within the `DetectionHead` to map ground truth bounding boxes to the model's multi-scale anchors.
+3. **CIoU Loss Optimization:** Implemented **Complete IoU (CIoU)** loss for bounding box regression. Corrected the center calculation logic (`cx_new = cx_anchor + (r - l) / 2`) to handle asymmetric object boundaries within grid cells.
+4. **Training Strategy (v7 Optimized):**
+   - **Phase 1 (Epochs 1–10):** Backbone frozen; only Neck and Head are trained at `lr=1e-4` with a Cosine Annealing scheduler.
+   - **Phase 2 (Epochs 10+):** Full model fine-tuning with differential learning rates (`1e-5` for backbone, `5e-5` for head/neck).
+   - **Persistence:** Automatic checkpointing to `models/weights/` every epoch during the 50-epoch run.

@@ -38,10 +38,10 @@ Les pyramides CNN standard agrègent les caractéristiques uniquement par des co
 Les ensembles de données de détection d'armes souffrent d'un déséquilibre massif des classes de fond (objets "confuseurs" faciles). Nous avons implémenté une tête découplée avec la Focal Loss pour remédier à cela.
 
 **Actions Clés :**
-1. **Architecture Découplée** : Création de trois branches convolutionnelles distinctes (Classification, Régression de Boîte, Objectivité) pour chaque niveau de caractéristique (P3, P4, P5), en suivant le modèle de conception de YOLOX.
-2. **Intégration de la Focal Loss** : Écriture d'une fonction personnalisée `focal_loss()` utilisant `binary_cross_entropy_with_logits` de PyTorch.
-   - **Gamma (`γ=2,0`)** : Agit comme un exposant de focalisation qui réduit agressivement la pondération de la perte provenant des zones de fond faciles à classifier, forçant le réseau à se concentrer sur les échantillons difficiles (par exemple, les armes partiellement masquées).
-   - **Alpha (`α=0,25`)** : Agit comme facteur d'équilibrage pour les fréquences de classes.
+3. **Décodage BBox & NMS (Le "Fix")** : Implémentation du pipeline `decode_predictions()` pour convertir les sorties brutes du modèle en boîtes englobantes localisées.
+   - **Décodage DFL** : Implémentation du décodage de la Distribution Focal Loss (DFL) pour transformer les décalages de régression en distances spatiales (`ltrb`).
+   - **Transformation de Coordonnées** : Ajout d'une logique pour mapper les distances relatives à la foulée vers des coordonnées normalisées `[x1, y1, x2, y2]`.
+   - **NMS** : Intégration de `torchvision.ops.nms` pour supprimer les détections redondantes et garantir une seule détection par arme.
 
 ---
 
@@ -54,7 +54,9 @@ Les trois sous-modules indépendants nécessitaient une interface unifiée pour 
 1. **Assemblage du Graphe** : Création du module `HybridWeaponDetector`. Le passage `forward()` achemine élégamment les données :
    `Image Brute -> YOLOBackbone -> SwinNeck -> DetectionHead -> (cls_logits, bbox_offsets, objectness)`
 2. **Gestion de l'État** : Implémentation de `.save()` et `.load()` pour sauvegarder de manière atomique le `state_dict` combiné des trois composants dans un seul fichier `best.pt`.
-3. **Boucle d'Inférence** : Mise en place d'un bouchon (stub) pour `.predict()` afin de gérer les tableaux numpy entrants ou les tuiles SAHI lors du déploiement actif.
+3. **Prédiction Optimisée** : Finalisation de la méthode `.predict()` avec un prétraitement complet :
+   - **Inversion BGR-vers-RGB** : Ajout d'une conversion d'espace colorimétrique pour aligner les entrées OpenCV avec les exigences RGB du backbone.
+   - **Décodage Intégré au Graphe** : Connexion de la logique de décodage de la tête pour fournir des détections prêtes à l'emploi directement au moteur d'inférence.
 
 ---
 
@@ -65,9 +67,9 @@ Pour entraîner cette architecture hautement personnalisée, nous avons construi
 
 **Actions Clés :**
 1. **Chargement des Données Réelles** : Intégration de `ultralytics.data.dataset.YOLODataset` pour gérer l'ensemble de données de 50 000 images, incluant les augmentations mosaic et mixup.
-2. **Correspondance des Cibles (Le "Fix")** : Implémentation d'une logique de correspondance spatiale au sein de la `DetectionHead` pour mapper les boîtes englobantes de vérité terrain (ground truth) aux ancres multi-échelles du modèle (P3, P4, P5).
-3. **Perte Composite** : Connexion de la Focal Loss de classification et de la perte d'Objectivité dans une seule méthode `.compute_loss()`.
-4. **Stratégie d'Entraînement** :
-   - **Phase 1 (Époques 1–10)** : Backbone gelé ; seuls le Cou et la Tête sont entraînés à `lr=1e-4` pour stabiliser le contexte global.
-   - **Phase 2 (Époques 10+)** : Réglage fin du modèle complet à `lr=1e-5` pour affiner les caractéristiques des armes à bas niveau.
-   - **Persistance** : Points de contrôle automatiques dans `models/weights/` toutes les 5 époques.
+2. **Correspondance des Cibles** : Implémentation d'une logique de correspondance spatiale au sein de la `DetectionHead` pour mapper les boîtes englobantes de vérité terrain aux ancres multi-échelles.
+3. **Optimisation de la Perte CIoU** : Implémentation de la perte **Complete IoU (CIoU)** pour la régression des boîtes. Correction de la logique de calcul du centre (`cx_new = cx_anchor + (r - l) / 2`) pour gérer les limites asymétriques des objets dans les cellules de la grille.
+4. **Stratégie d'Entraînement (v7 Optimisée)** :
+   - **Phase 1 (Époques 1–10)** : Backbone gelé ; seuls le Cou et la Tête sont entraînés à `lr=1e-4` avec un planificateur Cosine Annealing.
+   - **Phase 2 (Époques 10+)** : Réglage fin du modèle complet avec des taux d'apprentissage différentiels (`1e-5` pour le backbone, `5e-5` pour la tête/le cou).
+   - **Persistance** : Points de contrôle automatiques dans `models/weights/` à chaque époque pendant l'exécution de 50 époques.

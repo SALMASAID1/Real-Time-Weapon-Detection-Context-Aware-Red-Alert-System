@@ -144,6 +144,7 @@ class InferenceEngine:
 
         sahi_every_n = self.settings.get("sahi_every_n", 3)
         conf_threshold = self.settings.get("conf_threshold", 0.25)
+        iou_threshold = self.settings.get("iou_threshold", 0.45)
         
         fps_start_time = time.time()
         fps_counter = 0
@@ -163,7 +164,7 @@ class InferenceEngine:
             if is_sahi_frame:
                 weapon_dets = self.sahi_pipeline.run(frame)
             else:
-                weapon_dets = self.weapon_model.predict(frame, conf_threshold=conf_threshold)
+                weapon_dets = self.weapon_model.predict(frame, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
             
             # 2. Hand Stream
             # Assuming hand_model is an Ultralytics YOLO model

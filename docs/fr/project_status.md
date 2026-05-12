@@ -16,22 +16,22 @@ Le projet est actuellement en **Phase 2 : Entraînement Actif et Optimisation**.
 
 ## 🚧 Travaux en Cours (Phase 2 - Entraînement V7)
 *   **Artéfact Actif :** `notebooks/Phase2_Training_v7.ipynb`.
-*   **Apprentissage Différentiel :** Implémentation d'un taux d'apprentissage plus bas pour le backbone (`1e-5`) par rapport au neck/head (`5e-5`) pour préserver les caractéristiques COCO pré-entraînées.
-*   **Réglage de la Focal Loss :** Ajustement de $\alpha$ et $\gamma$ pour pénaliser les négatifs faciles de la classe "Confuseur".
-*   **Assainissement des Étiquettes :** Suppression des boîtes englobantes en double et nettoyage des masques de segmentation bruyants.
+*   **Apprentissage Différentiel :** Stratégie de LR finalisée (`1e-5` backbone / `5e-5` head) avec Cosine Annealing.
+*   **Décodage Prêt :** Implémentation de `DetectionHead.decode_predictions()` avec DFL et NMS pour une validation en temps réel.
+*   **Optimisation de la Perte :** Correction du calcul du centre CIoU et de la cohérence des couleurs BGR-vers-RGB.
 
 ---
 
 ## 🛑 Défis et Bloqueurs Actuels
-*   **Déséquilibre des Classes :** Les "Confuseurs" sous-performent actuellement par rapport aux "Armes".
-*   **Synchronisation Multi-GPU :** Résolution de l'erreur `KeyError: P3` lors de l'utilisation de `nn.DataParallel` sur Kaggle Dual T4 (Solution : passée avant manuelle implémentée dans `YOLOBackbone`).
+*   **Audit Visuel :** (RÉSOLU) Le modèle affiche désormais de réelles boîtes englobantes pendant l'entraînement.
+*   **Synchronisation Multi-GPU :** Résolution de l'erreur `KeyError: P3` via une itération manuelle du passage avant dans `YOLOBackbone`.
 
 ---
 
 ## ⏭️ Prochaines Étapes Immédiates
-1.  **Exécution de 50 époques :** Lancer un entraînement complet avec le planificateur Cosine Annealing.
-2.  **Audit Visuel :** Utiliser FiftyOne pour inspecter les 100 images les moins performantes de l'ensemble de validation.
-3.  **Banc d'essai d'Inférence :** Porter les poids vers `src/inference/` pour mesurer les FPS en conditions réelles.
+1.  **Exécution de 50 époques :** Lancer l'entraînement complet optimisé.
+2.  **Validation Visuelle :** Vérifier la qualité de la localisation en utilisant la nouvelle logique `predict()`.
+3.  **Banc d'essai d'Inférence :** Porter les poids vers `src/inference/` une fois que `best.pt` est atteint.
 
 ---
 *Rapport d'état généré par l'Assistant IA Antigravity.*
