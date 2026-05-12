@@ -39,7 +39,7 @@ small-object detection.
 
 Key hyperparameters
 -------------------
-    nc              : int   — Number of classes (must match dataset.yaml nc: 7)
+    nc              : int   — Number of classes (must match dataset.yaml nc: 3)
     gamma           : float — Focal Loss focusing parameter (default 2.0)
     alpha           : float — Focal Loss balance weight (default 0.25 per class)
     reg_max         : int   — DFL (Distribution Focal Loss) regression max (16)
@@ -129,50 +129,229 @@ class DetectionHead(nn.Module):
             
         return torch.cat(cls_logits, dim=1), torch.cat(bbox_offsets, dim=1), torch.cat(objectness, dim=1)
 
+    def _generate_anchor_centers(self, device):
+        """
+        Pre-compute normalized (cx, cy) anchor centres for each FPN level.
+
+        For a 640×640 input the grid sizes are:
+            P3: 80×80 (stride  8)
+            P4: 40×40 (stride 16)
+            P5: 20×20 (stride 32)
+
+        Returns
+        -------
+        anchor_centers : Tensor (total_anchors, 2)
+            Each row is (cx, cy) in [0, 1] normalized coordinates.
+        anchor_strides : Tensor (total_anchors, 1)
+            Stride for each anchor in pixel units.
+        """
+        strides = [8, 16, 32]
+        imgsz = 640  # training resolution
+        centers_list = []
+        strides_list = []
+
+        for s in strides:
+            grid_h = imgsz // s
+            grid_w = imgsz // s
+            shift_y, shift_x = torch.meshgrid(
+                torch.arange(grid_h, dtype=torch.float32, device=device),
+                torch.arange(grid_w, dtype=torch.float32, device=device),
+                indexing="ij",
+            )
+            # Normalize centres to [0, 1]
+            cx = (shift_x + 0.5) * s / imgsz
+            cy = (shift_y + 0.5) * s / imgsz
+            centers_list.append(torch.stack([cx, cy], dim=-1).reshape(-1, 2))
+            strides_list.append(torch.full((grid_h * grid_w, 1), s, dtype=torch.float32, device=device))
+
+        return torch.cat(centers_list, dim=0), torch.cat(strides_list, dim=0)
+
     def build_targets(self, pred_shape, batch, device):
         """
         Simplified Matcher: Assigns ground truth to the nearest spatial anchor.
         pred_shape: (B, total_anchors, nc)
-        batch: Dictionary from YOLODataset containing 'cls', 'batch_idx', etc.
+        batch: Dictionary from YOLODataset containing 'cls', 'batch_idx', 'bboxes'.
+
+        Returns
+        -------
+        target_cls  : (B, num_anchors, nc)  — one-hot class targets
+        target_obj  : (B, num_anchors, 1)   — objectness targets
+        target_bbox : (B, num_anchors, 4)   — normalized [cx, cy, w, h] box targets
+        fg_mask     : (B, num_anchors)       — bool mask for positive anchors
         """
         B, num_anchors, nc = pred_shape
-        target_cls = torch.zeros((B, num_anchors, nc), device=device)
-        target_obj = torch.zeros((B, num_anchors, 1), device=device)
-        
-        cls = batch['cls']
-        batch_idx = batch['batch_idx']
-        
+        target_cls  = torch.zeros((B, num_anchors, nc), device=device)
+        target_obj  = torch.zeros((B, num_anchors, 1), device=device)
+        target_bbox = torch.zeros((B, num_anchors, 4), device=device)
+        fg_mask     = torch.zeros((B, num_anchors), dtype=torch.bool, device=device)
+
+        cls      = batch['cls']        # (N_gt,) or (N_gt, 1)
+        batch_idx = batch['batch_idx'] # (N_gt,)
+        bboxes   = batch.get('bboxes') # (N_gt, 4)  normalized [cx, cy, w, h]
+
         if cls.shape[0] == 0:
-            return target_cls, target_obj
+            return target_cls, target_obj, target_bbox, fg_mask
 
-        # For each target, find the grid cell it falls into
+        # Flatten cls to 1-D if (N_gt, 1)
+        if cls.ndim > 1:
+            cls = cls.squeeze(-1)
+
+        # Anchor centres — (num_anchors, 2)
+        anchor_centers, _ = self._generate_anchor_centers(device)
+
         for i in range(len(cls)):
-            b_idx = int(batch_idx[i])
+            b_idx   = int(batch_idx[i])
             cls_idx = int(cls[i])
-            
-            # Simplified: Assign to all anchors for this image to verify gradient flow
-            # In production, this would use Task Aligned Assigner (TAL)
-            target_cls[b_idx, :, cls_idx] = 1.0 
-            target_obj[b_idx, :, 0] = 1.0
 
-        return target_cls, target_obj
+            if bboxes is not None:
+                gt_cx, gt_cy = bboxes[i, 0].item(), bboxes[i, 1].item()
+                # Assign the anchor whose centre is closest to this GT centre
+                dists = (anchor_centers[:, 0] - gt_cx) ** 2 + (anchor_centers[:, 1] - gt_cy) ** 2
+                best_anchor = dists.argmin().item()
+
+                target_cls[b_idx, best_anchor, cls_idx] = 1.0
+                target_obj[b_idx, best_anchor, 0]       = 1.0
+                target_bbox[b_idx, best_anchor]         = bboxes[i].to(device)
+                fg_mask[b_idx, best_anchor]              = True
+            else:
+                # Fallback: no bboxes available — assign all anchors (gradient-flow check)
+                target_cls[b_idx, :, cls_idx] = 1.0
+                target_obj[b_idx, :, 0]       = 1.0
+
+        return target_cls, target_obj, target_bbox, fg_mask
+
+    # ── CIoU loss ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _ciou_loss(pred_boxes, target_boxes, eps=1e-7):
+        """
+        Complete IoU loss between two sets of [cx, cy, w, h] boxes.
+
+        Parameters
+        ----------
+        pred_boxes   : (N, 4) — predicted boxes in normalized [cx, cy, w, h]
+        target_boxes : (N, 4) — ground-truth boxes in normalized [cx, cy, w, h]
+
+        Returns
+        -------
+        loss : scalar — mean CIoU loss over the N pairs
+        """
+        import math
+
+        # Convert [cx, cy, w, h] → [x1, y1, x2, y2]
+        pred_x1 = pred_boxes[:, 0] - pred_boxes[:, 2] / 2
+        pred_y1 = pred_boxes[:, 1] - pred_boxes[:, 3] / 2
+        pred_x2 = pred_boxes[:, 0] + pred_boxes[:, 2] / 2
+        pred_y2 = pred_boxes[:, 1] + pred_boxes[:, 3] / 2
+
+        gt_x1 = target_boxes[:, 0] - target_boxes[:, 2] / 2
+        gt_y1 = target_boxes[:, 1] - target_boxes[:, 3] / 2
+        gt_x2 = target_boxes[:, 0] + target_boxes[:, 2] / 2
+        gt_y2 = target_boxes[:, 1] + target_boxes[:, 3] / 2
+
+        # Intersection
+        inter_x1 = torch.max(pred_x1, gt_x1)
+        inter_y1 = torch.max(pred_y1, gt_y1)
+        inter_x2 = torch.min(pred_x2, gt_x2)
+        inter_y2 = torch.min(pred_y2, gt_y2)
+        inter_area = (inter_x2 - inter_x1).clamp(0) * (inter_y2 - inter_y1).clamp(0)
+
+        # Union
+        pred_area = (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
+        gt_area   = (gt_x2 - gt_x1) * (gt_y2 - gt_y1)
+        union_area = pred_area + gt_area - inter_area + eps
+
+        iou = inter_area / union_area
+
+        # Enclosing box
+        enc_x1 = torch.min(pred_x1, gt_x1)
+        enc_y1 = torch.min(pred_y1, gt_y1)
+        enc_x2 = torch.max(pred_x2, gt_x2)
+        enc_y2 = torch.max(pred_y2, gt_y2)
+
+        # Centre distance squared
+        rho2 = (pred_boxes[:, 0] - target_boxes[:, 0]) ** 2 + \
+               (pred_boxes[:, 1] - target_boxes[:, 1]) ** 2
+
+        # Diagonal of enclosing box squared
+        c2 = (enc_x2 - enc_x1) ** 2 + (enc_y2 - enc_y1) ** 2 + eps
+
+        # Aspect ratio penalty
+        v = (4 / (math.pi ** 2)) * (
+            torch.atan(target_boxes[:, 2] / (target_boxes[:, 3] + eps)) -
+            torch.atan(pred_boxes[:, 2] / (pred_boxes[:, 3] + eps))
+        ) ** 2
+        with torch.no_grad():
+            alpha_ciou = v / (1 - iou + v + eps)
+
+        ciou = iou - rho2 / c2 - alpha_ciou * v
+        return (1 - ciou).mean()
 
     def compute_loss(self, preds, batch, device):
         """
-        Comprehensive loss calculation for the hybrid detector.
+        Comprehensive loss = Focal-cls + BCE-obj + CIoU-box.
+
+        The CIoU component trains bounding-box regression so the model
+        learns to localize weapons, not just classify anchor cells.
         """
         cls_logits, reg_offsets, objectness = preds
-        
+
         # 1. Match targets to anchors
-        target_cls, target_obj = self.build_targets(cls_logits.shape, batch, device)
-        
-        # 2. Classification Focal Loss
+        target_cls, target_obj, target_bbox, fg_mask = self.build_targets(
+            cls_logits.shape, batch, device
+        )
+
+        # 2. Classification Focal Loss (all anchors)
         loss_cls = self.focal_loss(cls_logits, target_cls)
-        
-        # 3. Objectness Loss
+
+        # 3. Objectness Loss (all anchors)
         loss_obj = F.binary_cross_entropy_with_logits(objectness, target_obj)
-        
-        return loss_cls + loss_obj
+
+        # 4. CIoU Box Regression Loss (positive anchors only)
+        loss_box = torch.tensor(0.0, device=device)
+        num_fg = fg_mask.sum().item()
+
+        if num_fg > 0:
+            # Decode DFL regression offsets → [cx, cy, w, h] for positive anchors
+            anchor_centers, anchor_strides = self._generate_anchor_centers(device)
+
+            # Gather foreground predictions: (num_fg, 4*reg_max)
+            fg_reg = reg_offsets[fg_mask]
+
+            # DFL decode: softmax over reg_max bins → expected value per side
+            B_fg = fg_reg.shape[0]
+            fg_reg = fg_reg.reshape(B_fg, 4, self.reg_max)      # (num_fg, 4, reg_max)
+            fg_reg = F.softmax(fg_reg, dim=-1)                   # (num_fg, 4, reg_max)
+            proj = torch.arange(self.reg_max, dtype=torch.float32, device=device)
+            fg_dist = (fg_reg * proj).sum(dim=-1)                # (num_fg, 4) — ltrb
+
+            # Get anchor centres and strides for positive anchors
+            # fg_mask is (B, num_anchors) — expand to get per-anchor indices
+            fg_anchor_idx = fg_mask.any(dim=0).nonzero(as_tuple=True)[0]  # approximate per-anchor
+            # More precise: iterate batch
+            fg_centers_list = []
+            fg_strides_list = []
+            for b in range(fg_mask.shape[0]):
+                per_img = fg_mask[b].nonzero(as_tuple=True)[0]
+                fg_centers_list.append(anchor_centers[per_img])
+                fg_strides_list.append(anchor_strides[per_img])
+            fg_centers = torch.cat(fg_centers_list, dim=0)  # (num_fg, 2)
+            fg_strides = torch.cat(fg_strides_list, dim=0)  # (num_fg, 1)
+
+            # Convert ltrb distances (in stride units) to [cx, cy, w, h] normalized
+            imgsz = 640.0
+            stride_norm = fg_strides / imgsz  # normalize stride to [0,1]
+            pred_cx = fg_centers[:, 0:1]  # already normalized
+            pred_cy = fg_centers[:, 1:2]
+            pred_w  = (fg_dist[:, 0:1] + fg_dist[:, 2:3]) * stride_norm
+            pred_h  = (fg_dist[:, 1:2] + fg_dist[:, 3:4]) * stride_norm
+            pred_boxes = torch.cat([pred_cx, pred_cy, pred_w, pred_h], dim=1)  # (num_fg, 4)
+
+            gt_boxes = target_bbox[fg_mask]  # (num_fg, 4)
+            loss_box = self._ciou_loss(pred_boxes, gt_boxes)
+
+        # Loss weights (following YOLO convention: box=7.5, cls=0.5, obj=1.5)
+        loss = 7.5 * loss_box + 0.5 * loss_cls + 1.5 * loss_obj
+        return loss
 
     def focal_loss(self, pred_logits, targets, gamma: float = None, alpha: float = None):
         gamma = gamma if gamma is not None else self.gamma

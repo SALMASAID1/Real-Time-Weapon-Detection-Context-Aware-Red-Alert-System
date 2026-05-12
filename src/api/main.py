@@ -64,7 +64,7 @@ from ultralytics import YOLO
 
 from src.api.routers import stream, threats, settings as settings_router
 from src.api.routers.stream import manager as ws_manager
-from src.models.hybrid_model import HybridWeaponDetector
+from models.hybrid_model import HybridWeaponDetector
 from src.inference.sahi_pipeline import SAHIPipeline
 from src.threat_logic.threat_scorer import ThreatScorer
 from src.threat_logic.iou_calculator import IoUCalculator

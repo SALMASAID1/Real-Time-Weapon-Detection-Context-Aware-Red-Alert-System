@@ -35,6 +35,8 @@ Weight loading strategy
    `freeze_backbone_epochs` epochs.
 """
 
+import numpy as np
+import cv2
 import torch
 import torch.nn as nn
 from models.backbones.yolo_backbone import YOLOBackbone
@@ -102,7 +104,7 @@ class HybridWeaponDetector(nn.Module):
         Run a full forward pass and decode results.
         """
         self.eval()
-        with torch.no.grad():
+        with torch.no_grad():
             # Basic preprocessing (BGR to RGB and Normalisation)
             if isinstance(frame, np.ndarray):
                 # Simple Resize if not 640x640
