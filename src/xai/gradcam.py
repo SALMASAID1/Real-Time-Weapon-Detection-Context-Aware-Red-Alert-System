@@ -33,10 +33,9 @@ class GradCAMGenerator:
         """
         Generates a Grad-CAM heatmap overlaid on the original frame.
         """
-        # 1. Prepare image for torch
-        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img_float = np.float32(img_rgb) / 255
-        input_tensor = torch.from_numpy(img_float).permute(2, 0, 1).unsqueeze(0)
+        # 1. Prepare image for torch — model expects BGR (matches training pipeline)
+        img_float_bgr = np.float32(frame) / 255
+        input_tensor = torch.from_numpy(img_float_bgr).permute(2, 0, 1).unsqueeze(0)
         
         if torch.cuda.is_available():
             input_tensor = input_tensor.cuda()
@@ -52,8 +51,9 @@ class GradCAMGenerator:
         grayscale_cam = self.cam(input_tensor=input_tensor, targets=targets)
         grayscale_cam = grayscale_cam[0, :]
 
-        # 5. Create color overlay
-        cam_image = show_cam_on_image(img_float, grayscale_cam, use_rgb=True)
+        # 5. Create color overlay (show_cam_on_image needs RGB float [0,1])
+        img_float_rgb = np.float32(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)) / 255
+        cam_image = show_cam_on_image(img_float_rgb, grayscale_cam, use_rgb=True)
         
         # Convert back to BGR for OpenCV/Storage
         return cv2.cvtColor(cam_image, cv2.COLOR_RGB2BGR)

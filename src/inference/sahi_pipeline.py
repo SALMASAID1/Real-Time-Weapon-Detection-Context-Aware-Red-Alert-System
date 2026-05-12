@@ -7,12 +7,14 @@ class SAHIPipeline:
     Tiled inference pipeline wrapping HybridWeaponDetector.
     """
 
-    def __init__(self, model, tile_size=640, overlap_ratio=0.2, batch_size=8, nms_iou_threshold=0.5):
+    def __init__(self, model, tile_size=640, overlap_ratio=0.2, batch_size=8, nms_iou_threshold=0.5, conf_threshold=0.25, iou_threshold=0.45):
         self.model = model
         self.tile_size = tile_size
         self.overlap_ratio = overlap_ratio
         self.batch_size = batch_size
         self.nms_iou_threshold = nms_iou_threshold
+        self.conf_threshold = conf_threshold
+        self.iou_threshold = iou_threshold
         self.stride = int(tile_size * (1 - overlap_ratio))
 
     def run(self, frame: np.ndarray) -> List[Dict]:
@@ -34,7 +36,7 @@ class SAHIPipeline:
             # In a real scenario, we'd batch these into a single tensor
             # For now, we process them sequentially or via model.predict(batch)
             for img, origin in zip(batch_imgs, batch_origins):
-                tile_dets = self.model.predict(img)
+                tile_dets = self.model.predict(img, conf_threshold=self.conf_threshold, iou_threshold=self.iou_threshold)
                 
                 # 3. Translate tile coordinates to full frame coordinates
                 translated_dets = self._to_full_frame_coords(tile_dets, origin)

@@ -116,7 +116,11 @@ async def lifespan(app: FastAPI):
     hand_model = YOLO(os.getenv("HAND_MODEL_PATH", "yolov8n.pt"))
     
     # 2. Logic & Pipelines
-    sahi_pipeline = SAHIPipeline(weapon_model)
+    sahi_pipeline = SAHIPipeline(
+        weapon_model,
+        conf_threshold=float(os.getenv("CONF_THRESHOLD", 0.25)),
+        iou_threshold=float(os.getenv("IOU_THRESHOLD", 0.45))
+    )
     iou_calc = IoUCalculator(mode="giou")
     threat_scorer = ThreatScorer(iou_calc)
     
@@ -134,6 +138,7 @@ async def lifespan(app: FastAPI):
     settings = {
         "sahi_every_n": int(os.getenv("SAHI_EVERY_N", 3)),
         "conf_threshold": float(os.getenv("CONF_THRESHOLD", 0.25)),
+        "iou_threshold": float(os.getenv("IOU_THRESHOLD", 0.45)),
         "camera_id": os.getenv("CAMERA_ID", "CAM-01")
     }
     

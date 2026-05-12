@@ -111,9 +111,8 @@ class HybridWeaponDetector(nn.Module):
                 if frame.shape[:2] != (640, 640):
                     frame = cv2.resize(frame, (640, 640))
                 
-                # BGR to RGB flip (OpenCV standard to YOLO/Swin expectation)
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                x = torch.from_numpy(frame_rgb).permute(2, 0, 1).float() / 255.0
+                # Keep BGR order — matches YOLODataset training pipeline
+                x = torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0
                 x = x.unsqueeze(0).to(self.device)
             else:
                 x = frame.to(self.device)
