@@ -66,69 +66,96 @@ class YOLOBackbone(nn.Module):
         P3, P4, P5. These layer indices are model-variant-specific and must
         be verified against the parsed model graph after loading.
     """
-    def __init__(self, model_variant="yolo11m.pt", pretrained=True, freeze_backbone_epochs=5, intermediate_layers=[4, 6, 10]):
+    def __init__(self, model_variant="yolo11m.pt", pretrained=True, freeze_backbone_epochs=5, intermediate_layers=None):
         super().__init__()
         self.freeze_backbone_epochs = freeze_backbone_epochs
-        self.intermediate_layers = intermediate_layers
+        
+        # Standard backbone indices for P3, P4, P5
+        if intermediate_layers is None:
+            if "yolo11" in model_variant or "yolo12" in model_variant:
+                self.intermediate_layers = [4, 6, 10]
+            else: # Fallback to YOLOv8/v9/v10
+                self.intermediate_layers = [4, 6, 9]
+        else:
+            self.intermediate_layers = intermediate_layers
         
         # Load the base model
         base_model = YOLO(model_variant)
-        # Use the DetectionModel wrapper which handles internal routing (Concat layers, etc.)
+        # Use the DetectionModel wrapper (base_model.model)
         self.model = base_model.model
         
-        # Store features
-        self.features = {}
+        # Identify which layers we need to save for the manual forward pass
+        # We only care about layers up to the last intermediate layer (P5)
+        last_target_idx = max(self.intermediate_layers)
+        self.save = set(self.intermediate_layers)
+        for i, m in enumerate(self.model.model):
+            if i > last_target_idx: break # Optimization: Ignore layers past backbone
+            if hasattr(m, 'f'):
+                if isinstance(m.f, int):
+                    if m.f != -1: self.save.add(m.f)
+                else:
+                    for f in m.f:
+                        if f != -1: self.save.add(f)
         
-        # Register forward hooks
-        def get_activation(name):
-            def hook(model, input, output):
-                self.features[name] = output
-            return hook
-        
-        # YOLOv11/v12 Backbone indices for P3, P4, P5 are typically 4, 6, 10
-        for name, layer_idx in zip(["P3", "P4", "P5"], self.intermediate_layers):
-            layer = self.model.model[layer_idx]
-            layer.register_forward_hook(get_activation(name))
-                
         # Get channel sizes by running a dummy forward pass
         device = next(self.model.parameters()).device
         dummy_input = torch.zeros(1, 3, 640, 640).to(device)
-        self.model(dummy_input)
+        features = self.forward(dummy_input)
+        
+        # Safety check: ensure all levels were extracted
+        for level in ["P3", "P4", "P5"]:
+            if level not in features:
+                raise KeyError(f"Failed to extract {level} from YOLO backbone at indices {self.intermediate_layers}")
+
         self.out_channels = {
-            "P3": self.features["P3"].shape[1],
-            "P4": self.features["P4"].shape[1],
-            "P5": self.features["P5"].shape[1]
+            "P3": features["P3"].shape[1],
+            "P4": features["P4"].shape[1],
+            "P5": features["P5"].shape[1]
         }
 
     def forward(self, x):
         """
-        Parameters
-        ----------
-        x : torch.Tensor
-            Input image batch, shape (B, 3, H, W).
-            For SAHI, this is a single tile of shape (B, 3, 640, 640).
-
-        Returns
-        -------
-        dict[str, torch.Tensor]
-            {
-                "P3": Tensor of shape (B, C3, H/8,  W/8),
-                "P4": Tensor of shape (B, C4, H/16, W/16),
-                "P5": Tensor of shape (B, C5, H/32, W/32),
-            }
-            C3/C4/C5 are variant-dependent channel counts (e.g. 128/256/512
-            for yolo11n, 256/512/1024 for yolo11l).
+        DataParallel-safe forward pass that manually iterates through YOLO layers.
+        Stops early after extracting P5 to save GPU memory.
         """
-        self.features = {} # Clear previous features
-        _ = self.model(x)
-        return self.features
+        y = []
+        features = {}
+        last_target_idx = max(self.intermediate_layers)
+
+        for i, m in enumerate(self.model.model):
+            # Resolve input(s) for current layer
+            if m.f != -1:
+                if isinstance(m.f, int):
+                    x = y[m.f]
+                else:
+                    x = [x if j == -1 else y[j] for j in m.f]
+            
+            # Forward current layer
+            x = m(x)
+            
+            # Cache output if needed for later skip connections or feature extraction
+            y.append(x if i in self.save else None)
+            
+            # Extract features at target levels
+            if i == self.intermediate_layers[0]:
+                features["P3"] = x
+            elif i == self.intermediate_layers[1]:
+                features["P4"] = x
+            elif i == self.intermediate_layers[2]:
+                features["P5"] = x
+            
+            # Optimization: Stop immediately once we have the backbone outputs
+            if i == last_target_idx:
+                break
+                
+        return features
 
     def freeze(self):
-        """Freeze all backbone parameters (called at epoch 0)."""
+        """Freeze all backbone parameters."""
         for param in self.model.parameters():
             param.requires_grad = False
 
     def unfreeze(self):
-        """Unfreeze backbone parameters (called at epoch freeze_backbone_epochs)."""
+        """Unfreeze backbone parameters."""
         for param in self.model.parameters():
             param.requires_grad = True

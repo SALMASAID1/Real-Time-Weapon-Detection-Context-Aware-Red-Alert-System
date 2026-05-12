@@ -88,6 +88,12 @@ class HybridWeaponDetector(nn.Module):
         Forward pass producing raw tensors.
         """
         features = self.backbone(x)
+        
+        # Robustness check for multi-GPU gathering/extraction
+        for key in ["P3", "P4", "P5"]:
+            if key not in features:
+                raise KeyError(f"Backbone failed to provide {key} features. Check layer indices.")
+                
         enriched_features = self.neck(features)
         return self.head(enriched_features)
 

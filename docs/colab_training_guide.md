@@ -1,6 +1,6 @@
 # Training on Google Colab: A Step-by-Step Guide
 
-This guide details how to transition the **Real-Time Weapon Detection & Context-Aware Red Alert System** to Google Colab for accelerated training using cloud GPUs.
+This guide details how to transition the **Real-Time Weapon Detection & Context-Aware Red Alert System** to Google Colab for accelerated training using cloud GPUs.\n\n> [!TIP]\n> **New**: We now recommend using **DagsHub Storage** for better data versioning. See the [DagsHub Migration Guide](dagshub_colab_setup.md) for the latest workflow.\n
 
 ## 1. Prerequisites
 - A Google Account.
