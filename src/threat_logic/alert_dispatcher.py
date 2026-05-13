@@ -131,9 +131,9 @@ class AlertDispatcher:
         # Update history
         self.dispatch_history[event_key] = {'time': now, 'id': event_id}
         
-        # 1. Audio Alert (Non-blocking in pygame)
+        # 1. Audio Alert (offloaded to thread so pygame doesn't block the event loop)
         if self.alert_sound:
-            self.alert_sound.play(loops=1)
+            await asyncio.to_thread(self.alert_sound.play, 1)
             
         # 2. Telegram Alert (Fire-and-forget task)
         if self.bot and self.chat_id:

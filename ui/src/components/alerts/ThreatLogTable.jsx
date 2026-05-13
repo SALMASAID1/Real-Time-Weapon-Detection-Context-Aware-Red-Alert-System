@@ -13,12 +13,26 @@
 import React from 'react';
 import ThreatBadge from '../monitor/ThreatBadge';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
 function formatTs(ts) {
+  // Handle both Unix timestamp (number) and ISO string (from REST API)
+  if (typeof ts === 'string') {
+    return new Date(ts).toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  }
   return new Date(ts * 1000).toLocaleTimeString('en-GB', {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+}
+
+// Safely extract class_name from either WS events (nested) or REST events (top-level)
+function getClassName(ev) {
+  return ev.detection?.class_name ?? ev.class_name ?? 'Unknown';
+}
+
+// Safely extract confidence
+function getConfidence(ev) {
+  return ev.detection?.confidence ?? ev.confidence ?? 0;
 }
 
 export default function ThreatLogTable({ events = [], compact = false, onRowClick }) {
@@ -55,28 +69,23 @@ export default function ThreatLogTable({ events = [], compact = false, onRowClic
               <td className="col-mono">{formatTs(ev.timestamp)}</td>
               {!compact && <td className="col-mono">{ev.camera_id}</td>}
               <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                {ev.detection.class_name}
+                {getClassName(ev)}
               </td>
               <td>
                 <ThreatBadge level={ev.threat_level} score={ev.composite_score} />
               </td>
               <td className="col-mono">
-                {Math.round(ev.composite_score * 100)}%
+                {Math.round((ev.composite_score ?? 0) * 100)}%
               </td>
               {!compact && (
                 <td className="col-mono">
-                  {Math.round(ev.proximity_iou * 100)}%
+                  {Math.round((ev.proximity_iou ?? 0) * 100)}%
                 </td>
               )}
               {!compact && (
-                <td>
-                  {/* Grad-CAM thumbnail — fetched via event detail endpoint */}
-                  <img
-                    className="thumb-img"
-                    src={`${API_BASE}/api/threats/${ev.event_id}/thumb`}
-                    alt={`Detection preview for ${ev.event_id}`}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
+                <td className="col-mono" style={{ color: 'var(--text-muted)' }}>
+                  {/* Snapshot preview — requires snapshot storage (planned) */}
+                  —
                 </td>
               )}
             </tr>

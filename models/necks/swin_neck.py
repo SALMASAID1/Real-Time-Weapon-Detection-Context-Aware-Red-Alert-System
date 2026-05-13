@@ -70,19 +70,23 @@ class SwinNeck(nn.Module):
         Number of consecutive Swin Transformer blocks to stack.
         More blocks → richer global context but higher memory and latency.
     """
-    def __init__(self, in_channels, embed_dim=512, num_heads=8, window_size=7, num_blocks=2):
+    def __init__(self, in_channels, embed_dim=512, num_heads=8, window_size=7, num_blocks=2, imgsz=640):
         super().__init__()
         self.in_channels = in_channels
         self.embed_dim = embed_dim
+        self.imgsz = imgsz
+        
+        # P4 spatial resolution: imgsz / stride(P4=16)
+        p4_res = imgsz // 16
         
         # P4 projection
         self.p4_proj_in = nn.Conv2d(in_channels["P4"], embed_dim, kernel_size=1)
         
-        # Swin Blocks
+        # Swin Blocks — input_resolution derived from imgsz
         self.swin_blocks = nn.ModuleList([
             SwinTransformerBlock(
                 dim=embed_dim,
-                input_resolution=(640//16, 640//16), # Default for 640x640 at P4
+                input_resolution=(p4_res, p4_res),
                 num_heads=num_heads,
                 window_size=window_size,
                 shift_size=0 if i % 2 == 0 else window_size // 2

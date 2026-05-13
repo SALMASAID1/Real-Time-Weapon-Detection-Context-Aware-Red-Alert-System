@@ -74,7 +74,8 @@ class HybridWeaponDetector(nn.Module):
             embed_dim=512,
             num_heads=8,
             window_size=7,
-            num_blocks=2
+            num_blocks=2,
+            imgsz=640
         )
         
         # 3. Head

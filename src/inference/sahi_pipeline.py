@@ -27,6 +27,12 @@ class SAHIPipeline:
         tiles_data = self._tile_frame(frame)
         all_detections = []
 
+        # Track if frame was resized (small-image path)
+        was_resized = (h <= self.tile_size and w <= self.tile_size
+                       and (h != self.tile_size or w != self.tile_size))
+        scale_x = w / self.tile_size if was_resized else 1.0
+        scale_y = h / self.tile_size if was_resized else 1.0
+
         # 2. Process tiles in batches for efficiency
         for i in range(0, len(tiles_data), self.batch_size):
             batch = tiles_data[i : i + self.batch_size]
@@ -46,13 +52,31 @@ class SAHIPipeline:
         if not all_detections:
             return []
 
-        return self._nms(all_detections, self.nms_iou_threshold)
+        merged = self._nms(all_detections, self.nms_iou_threshold)
+
+        # 5. If frame was resized, scale bboxes back to original frame dimensions
+        if was_resized:
+            for det in merged:
+                b = det['bbox']
+                det['bbox'] = [b[0] * scale_x, b[1] * scale_y,
+                               b[2] * scale_x, b[3] * scale_y]
+
+        return merged
 
     def _tile_frame(self, frame):
         """
         Partitions the frame into overlapping tiles.
+        Falls back to a single tile for frames smaller than tile_size.
         """
         h, w = frame.shape[:2]
+
+        # Guard: if frame is smaller than tile_size, return as single tile
+        if h <= self.tile_size and w <= self.tile_size:
+            # Pad or resize to tile_size for consistent model input
+            import cv2
+            tile = cv2.resize(frame, (self.tile_size, self.tile_size))
+            return [(tile, (0, 0))]
+
         tiles = []
 
         for y in range(0, h - self.tile_size + self.stride, self.stride):

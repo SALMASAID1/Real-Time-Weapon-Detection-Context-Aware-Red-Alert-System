@@ -60,8 +60,9 @@ export default function RedAlertBanner({ isActive, event, onDismiss }) {
     axios.patch(`${API_BASE}/api/threats/${event.event_id}/ack`).catch(() => {});
   };
 
-  const conf  = Math.round(event.detection.confidence * 100);
-  const score = Math.round(event.composite_score * 100);
+  const className = event.detection?.class_name ?? event.class_name ?? 'Weapon';
+  const conf  = Math.round((event.detection?.confidence ?? event.confidence ?? 0) * 100);
+  const score = Math.round((event.composite_score ?? 0) * 100);
 
   return (
     <>
@@ -82,9 +83,9 @@ export default function RedAlertBanner({ isActive, event, onDismiss }) {
         <div className="red-alert-banner__content">
           <div className="red-alert-banner__title">⚠ Red Alert — High Priority</div>
           <div className="red-alert-banner__detail">
-            <strong>{event.detection.class_name}</strong> detected on{' '}
+            <strong>{className}</strong> detected on{' '}
             <strong>{event.camera_id}</strong><br />
-            Confidence: {conf}% · Threat Score: {score}% · IoU: {(event.proximity_iou * 100).toFixed(0)}%
+            Confidence: {conf}% · Threat Score: {score}% · IoU: {((event.proximity_iou ?? 0) * 100).toFixed(0)}%
           </div>
         </div>
 

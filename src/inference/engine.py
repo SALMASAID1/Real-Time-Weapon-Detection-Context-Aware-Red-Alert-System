@@ -232,11 +232,18 @@ class InferenceEngine:
                     else:
                         weapon_dets = self.weapon_model.predict(frame, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
                     
-                    # Normalize weapon coordinates to pixel space BEFORE threat scoring
+                    # Convert normalized [0,1] bboxes to pixel space for
+                    # ThreatScorer (grid-cell computation needs pixel coords).
+                    # SAHI pipeline already returns pixel-space coords.
+                    if not is_sahi_frame:
+                        for det in weapon_dets:
+                            bbox = det.get("bbox", [0, 0, 0, 0])
+                            if all(0 <= v <= 1.0 for v in bbox) and w > 1 and h > 1:
+                                det["bbox"] = [bbox[0]*w, bbox[1]*h, bbox[2]*w, bbox[3]*h]
+                    # Mark all weapon dets as already in pixel space so
+                    # _format_detections_for_ui doesn't re-convert.
                     for det in weapon_dets:
-                        bbox = det.get("bbox", [0,0,0,0])
-                        if all(0 <= v <= 1.0 for v in bbox) and w > 1 and h > 1:
-                            det["bbox"] = [bbox[0]*w, bbox[1]*h, bbox[2]*w, bbox[3]*h]
+                        det['_pixel_space'] = True
                 except Exception as e:
                     logger.error(f"Weapon inference failed: {e}")
                     weapon_dets = []
@@ -369,24 +376,27 @@ class InferenceEngine:
           - class_name is present
         
         Handles two input formats:
-          - Weapon detections from decode_predictions: bbox [x1,y1,x2,y2] normalized (0-1)
+          - Weapon detections: tagged with `_pixel_space=True` (already converted)
           - Hand detections from Ultralytics YOLO: bbox [x1,y1,x2,y2] in pixels
+          - Any un-tagged normalized [0,1] detections: converted here
         """
         formatted = []
         for det in detections:
             bbox = det.get("bbox", [0, 0, 0, 0])
             
-            # Determine if bbox values are normalized (all between 0 and 1)
-            is_normalized = all(0 <= v <= 1.0 for v in bbox)
-            
-            if is_normalized and (frame_w > 1 and frame_h > 1):
-                # Convert from normalized [0,1] to pixel coordinates
-                px1 = bbox[0] * frame_w
-                py1 = bbox[1] * frame_h
-                px2 = bbox[2] * frame_w
-                py2 = bbox[3] * frame_h
-            else:
+            # If already marked as pixel space, use as-is
+            if det.get("_pixel_space", False):
                 px1, py1, px2, py2 = bbox
+            else:
+                # Fallback heuristic for unmarked detections
+                is_normalized = all(0 <= v <= 1.0 for v in bbox)
+                if is_normalized and (frame_w > 1 and frame_h > 1):
+                    px1 = bbox[0] * frame_w
+                    py1 = bbox[1] * frame_h
+                    px2 = bbox[2] * frame_w
+                    py2 = bbox[3] * frame_h
+                else:
+                    px1, py1, px2, py2 = bbox
             
             # Determine is_weapon based on class_id (0=Weapon) or existing field
             class_id = det.get("class_id", -1)

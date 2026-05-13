@@ -73,11 +73,21 @@ async def update_settings(new_settings: SystemSettings, request: Request):
         engine.settings["conf_threshold"] = new_settings.conf_threshold
         engine.settings["iou_threshold"] = new_settings.iou_threshold
         engine.settings["sahi_every_n"] = new_settings.sahi_every_n
+        engine.settings["inference_every_n"] = new_settings.inference_every_n
+        engine.settings["gradcam_on_high"] = new_settings.gradcam_on_high
+
+        # Propagate alert_threshold to ThreatScorer so it takes effect live
+        if hasattr(engine, 'threat_scorer'):
+            engine.threat_scorer.thresholds['high'] = new_settings.alert_threshold
+
         logger.info(
             f"Settings propagated to engine: "
             f"conf={new_settings.conf_threshold}, "
             f"iou={new_settings.iou_threshold}, "
-            f"sahi_n={new_settings.sahi_every_n}"
+            f"sahi_n={new_settings.sahi_every_n}, "
+            f"inference_n={new_settings.inference_every_n}, "
+            f"gradcam={new_settings.gradcam_on_high}, "
+            f"alert_thresh={new_settings.alert_threshold}"
         )
 
     return _current_settings

@@ -21,7 +21,9 @@ class ThreatScorer:
 
     def score(self, detections: List[Dict], frame_id: int) -> List[ScoredDetection]:
         # 1. Separate Hands and Weapons
-        hands = [d for d in detections if d.get('class_name') == 'hand' or d.get('class_id') == 1]
+        # Only match detections from the dedicated Hand model (Stream B).
+        # Do NOT use class_id == 1 — that matches "Person" from the weapon model.
+        hands = [d for d in detections if d.get('class_name') == 'hand']
         weapons = [d for d in detections if d.get('class_id') == 0] # 0 is Weapon in our data.yaml
         
         # 2. Get Proximity Scores
