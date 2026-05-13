@@ -60,18 +60,19 @@ The project is structured into six distinct milestones, each focusing on a criti
   - Developing "Hand-Weapon Proximity" logic (IoU-based) to validate active threats.
   - Implementing Grad-CAM for model explainability and debugging.
 
-### Milestone 4: Multimodal Alerting System
-- **Focus**: Real-time response.
+### Milestone 4: Multimodal Alerting & Dashboard
+- **Focus**: Real-time response and user interface.
 - **Tasks**:
   - Telegram Bot integration for remote notifications.
   - Local audio alert system using Pygame.
   - Integrating visual overlays (bounding boxes, proximity heatmaps) in the inference stream.
-
-### Milestone 5: Deployment & Dashboard
-- **Focus**: User experience and edge optimization.
-- **Tasks**:
-  - Quantizing models to TensorRT/OpenVINO for real-time performance.
   - Building the React/FastAPI dashboard for live surveillance monitoring.
+
+### Milestone 5: Optimization & Deployment
+- **Focus**: Edge performance and validation.
+- **Tasks**:
+  - Full 50-epoch model training and mAP validation.
+  - Quantizing models to TensorRT/OpenVINO for real-time performance (≥ 40 FPS).
   - Refining the alert dispatch logic to prevent "alert fatigue."
 
 ### Milestone 6: Dataset Optimization (Advanced)

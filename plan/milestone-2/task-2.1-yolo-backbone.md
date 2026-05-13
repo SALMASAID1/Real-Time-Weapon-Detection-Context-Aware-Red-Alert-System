@@ -4,9 +4,9 @@
 Implement or customize the YOLO backbone in `models/backbones/yolo_backbone.py` to serve as the primary feature extractor.
 
 ## Details
-1. **Backbone Selection**: Use YOLOv11/v12 CSP (Cross Stage Partial) connections for efficient feature extraction.
-2. **Modular Design**: Ensure the backbone can export features at multiple scales (P3, P4, P5) for the subsequent neck/head components.
-3. **Weight Initialization**: Implement logic to load pre-trained COCO weights to speed up convergence.
+ 1. [x] **Backbone Selection**: Use YOLOv11/v12 CSP (Cross Stage Partial) connections for efficient feature extraction.
+ 2. [x] **Modular Design**: Ensure the backbone can export features at multiple scales (P3, P4, P5) for the subsequent neck/head components.
+ 3. [x] **Weight Initialization**: Implement logic to load pre-trained COCO weights to speed up convergence.
 
 ## Learning Resources
 - [YOLOv11 Architecture Breakdown](https://docs.ultralytics.com/models/yolov11/)

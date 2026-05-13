@@ -4,12 +4,12 @@
 Develop the alert dispatching layer in `src/threat_logic/alert_dispatcher.py` to notify security personnel when a "High" threat is detected.
 
 ## Details
-1. **Telegram Integration**: Use `python-telegram-bot` to send asynchronous alerts containing:
+ 1. [x] **Telegram Integration**: Use `python-telegram-bot` to send asynchronous alerts containing:
    - A JPEG snapshot of the detection with bounding boxes.
    - The timestamp and threat score.
    - Camera ID and location metadata.
-2. **Local Audio Alerts**: Implement a local alarm trigger using the `pygame.mixer` to play a 1500Hz alert sound on the server machine.
-3. **Dispatcher Logic**: Ensure the dispatcher handles cooldowns (throttling) to prevent alert fatigue during sustained detections.
+ 2. [x] **Local Audio Alerts**: Implement a local alarm trigger using the `pygame.mixer` to play a 1500Hz alert sound on the server machine.
+ 3. [x] **Dispatcher Logic**: Ensure the dispatcher handles cooldowns (throttling) to prevent alert fatigue during sustained detections.
 
 ## Learning Resources
 - [Python Telegram Bot Documentation](https://python-telegram-bot.org/)

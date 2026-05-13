@@ -4,10 +4,10 @@
 Integrate Swin Transformer blocks into the model's neck within `models/necks/swin_neck.py` to capture long-range spatial dependencies.
 
 ## Details
-1. **Swin Blocks**: Implement Hierarchical Vision Transformer with Shifted Windows.
-2. **Feature Fusion**: Use the Swin Transformer to process multi-scale features from the YOLO backbone before passing them to the detection head.
-3. **Model Assembly**: Implement the full `HybridWeaponDetector` in `models/hybrid_model.py` to chain the Backbone, Swin Neck, and Detection Head (`models/heads/detection_head.py`).
-4. **Context Awareness**: Leverage the self-attention mechanism to better distinguish weapons from background noise in complex scenes.
+ 1. [x] **Swin Blocks**: Implement Hierarchical Vision Transformer with Shifted Windows.
+ 2. [x] **Feature Fusion**: Use the Swin Transformer to process multi-scale features from the YOLO backbone before passing them to the detection head.
+ 3. [x] **Model Assembly**: Implement the full `HybridWeaponDetector` in `models/hybrid_model.py` to chain the Backbone, Swin Neck, and Detection Head (`models/heads/detection_head.py`).
+ 4. [x] **Context Awareness**: Leverage the self-attention mechanism to better distinguish weapons from background noise in complex scenes.
 
 ## Learning Resources
 - [Swin Transformer: Hierarchical Vision Transformer using Shifted Windows](https://arxiv.org/abs/2103.14030)

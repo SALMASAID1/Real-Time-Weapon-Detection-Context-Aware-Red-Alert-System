@@ -4,9 +4,9 @@
 Develop the full training and validation pipeline in `notebooks/Phase2_Training.ipynb`.
 
 ## Details
-1. **Training Script**: Configure `model.train()` with parameters like `epochs`, `imgsz`, and `batch`.
-2. **Augmentation**: Implement custom augmentations (mosaic, mixup) to improve model robustness.
-3. **Monitoring**: Integrate logging with TensorBoard or WandB to track mAP (Mean Average Precision) and loss curves.
+ 1. [x] **Training Script**: Configure `model.train()` with parameters like `epochs`, `imgsz`, and `batch`.
+ 2. [x] **Augmentation**: Implement custom augmentations (mosaic, mixup) to improve model robustness.
+ 3. [x] **Monitoring**: Integrate logging with TensorBoard or WandB to track mAP (Mean Average Precision) and loss curves.
 
 ## Learning Resources
 - [Ultralytics Training Configuration Reference](https://docs.ultralytics.com/usage/cfg/)
