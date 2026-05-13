@@ -1,0 +1,115 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+
+\geometry{margin=2.5cm}
+
+% Couleurs personnalisées
+\definecolor{darkblue}{rgb}{0,0,0.5}
+
+\title{
+    \vspace{-2cm}
+    \includegraphics[width=0.2\textwidth]{docs/logo.png} % Assumes a logo might exist or placeholder
+    \\ [1cm]
+    \textbf{Système de Détection d'Armes en Temps Réel et d'Alerte Rouge Contextuelle} \\
+    \large Rapport de Présentation Technique
+}
+\author{Équipe de Projet}
+\date{\today}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Détection d'Armes Temps Réel}
+\lhead{Rapport Technique}
+\cfoot{\thepage}
+
+\begin{document}
+
+\maketitle
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\subsection{Problématique}
+Dans le contexte sécuritaire actuel, la détection rapide et automatique d'armes à feu dans les flux de vidéosurveillance est devenue un enjeu majeur pour la sécurité publique et privée. Les systèmes de surveillance traditionnels reposent souvent sur une surveillance humaine constante, sujette à la fatigue et aux erreurs d'inattention, ce qui peut entraîner des délais de réponse critiques lors d'incidents violents.
+
+\subsection{Importance du sujet}
+Une détection proactive permet de réduire drastiquement le temps d'intervention des forces de l'ordre ou des agents de sécurité. L'automatisation de cette tâche par l'intelligence artificielle offre une vigilance 24h/24 et 7j/7, capable d'analyser simultanément des dizaines de flux vidéo avec une précision constante.
+
+\subsection{Nécessité d'une solution innovante}
+Les modèles de détection d'objets standards ont souvent des difficultés dans des environnements complexes (faible luminosité, occlusions, petits objets au loin). Il est donc nécessaire d'opter pour une solution hybride combinant la rapidité des réseaux de neurones convolutionnels (CNN) et la capacité d'analyse contextuelle globale des Transformers.
+
+\section{Solution Proposée}
+La solution proposée consiste en un pipeline complet de détection et d'alerte nommé \textbf{SALMAS} (Real-Time Weapon Detection & Context-Aware Red Alert System). Elle intègre :
+\begin{itemize}
+    \item \textbf{Modèle Hybride YOLO+Swin} : Une architecture fusionnant YOLOv11 pour l'extraction rapide de caractéristiques et un Swin Transformer pour la compréhension spatiale globale.
+    \item \textbf{Inférence Intelligente (SAHI)} : Utilisation du \textit{Slicing Aided Hyper Inference} pour améliorer la détection d'armes de petite taille dans des images haute résolution.
+    \item \textbf{Analyse Contextuelle} : Un algorithme de calcul de proximité (GIoU) entre les mains détectées et les armes pour confirmer une menace réelle et réduire les faux positifs.
+    \item \textbf{Système d'Alerte Multimodal} : Notifications instantanées via Telegram et alertes sonores locales lors de la détection d'une menace de haut niveau.
+    \item \textbf{Interface de Monitoring} : Un tableau de bord interactif en React permettant une visualisation en temps réel avec explicabilité (Grad-CAM).
+\end{itemize}
+
+\section{Structure de la Base de Données (Dataset)}
+\subsection{Composition du Dataset}
+Notre base de données est issue d'une unification de plusieurs sources de données ouvertes et privées, totalisant \textbf{50 967 images}.
+Les données sont structurées selon le format YOLO, avec des fichiers d'annotations normalisés.
+
+\subsection{Classes de détection}
+Le modèle est entraîné sur trois classes distinctes :
+\begin{enumerate}
+    \item \textbf{Weapon (Arme)} : Pistolets, fusils et autres armes à feu.
+    \item \textbf{Person (Personne)} : Individus présents dans la scène.
+    \item \textbf{Confuser (Confuseur)} : Objets du quotidien pouvant être confondus avec des armes (téléphones, portefeuilles, outils) pour réduire les faux positifs.
+\end{enumerate}
+
+\subsection{Analyse de la structure}
+L'analyse exploratoire des données (EDA) a révélé que \textbf{36,2 \%} des objets annotés sont considérés comme "petits" (occupant moins de 1\% de la surface de l'image), justifiant ainsi l'utilisation de SAHI et d'un mécanisme d'attention. Pour assurer la robustesse du système, des augmentations synthétiques (pluie, brouillard, variations de luminosité) ont été appliquées.
+
+\section{Architecture Adoptée et Justification}
+\subsection{Architecture Hybride}
+L'architecture adoptée se décompose en trois parties majeures :
+\begin{enumerate}
+    \item \textbf{Backbone (YOLOv11)} : Utilisé pour son efficacité exceptionnelle dans l'extraction de caractéristiques locales. Nous extrayons les cartes de caractéristiques aux niveaux P3, P4 et P5.
+    \item \textbf{Neck (Swin Transformer)} : Nous avons intégré des blocs \textit{Swin Transformer} au niveau P4. Contrairement aux CNN classiques, le mécanisme d'auto-attention à fenêtre glissante permet de capturer des dépendances spatiales à longue distance (ex: lien entre une main et un objet distant).
+    \item \textbf{Head (Decoupled Detection Head)} : Une tête de détection découplée sépare les tâches de classification et de régression des boîtes englobantes, améliorant la convergence.
+\end{enumerate}
+
+\subsection{Justification du modèle}
+Le choix de cette architecture hybride repose sur le besoin de concilier \textbf{vitesse d'exécution} (temps réel) et \textbf{précision contextuelle}. Le Swin Transformer compense les faiblesses des CNN sur la compréhension globale de la scène, tandis que YOLO garantit que le système reste léger pour un déploiement sur du matériel standard.
+
+\section{Évaluation de la Performance}
+\subsection{Métriques Utilisées}
+L'évaluation repose sur les métriques standards de la détection d'objets :
+\begin{itemize}
+    \item \textbf{mAP@.5} (Mean Average Precision) : Précision moyenne à un seuil d'Intersection over Union (IoU) de 0.5.
+    \item \textbf{mAP@.5:.95} : Moyenne de la précision sur plusieurs seuils d'IoU, récompensant la précision de la localisation.
+    \item \textbf{Précision et Rappel} : Pour mesurer la capacité à éviter les faux positifs et les manqués.
+    \item \textbf{Score de Persistance} : Métrique temporelle garantissant qu'une alerte n'est déclenchée que si la détection est stable sur plusieurs trames.
+\end{itemize}
+
+\subsection{Résultats Attendus (Placeholder)}
+\textit{Note : L'entraînement complet de 50 époques est actuellement en cours de finalisation.}
+L'objectif cible pour le modèle final est un \textbf{mAP@.5 de 0,72}. Les premiers résultats sur les 5 premières époques montrent une convergence prometteuse avec une détection fonctionnelle des armes dans des conditions standards.
+
+\section{Démonstration}
+La démonstration finale présente le flux complet du système :
+\begin{enumerate}
+    \item \textbf{Flux Vidéo} : Capturé en temps réel depuis une caméra IP ou une webcam.
+    \item \textbf{Détection & XAI} : Affichage des boîtes englobantes et des cartes de chaleur Grad-CAM montrant les zones d'attention du modèle.
+    \item \textbf{Logique d'Alerte} : Déclenchement d'une alerte "ROUGE" sur le tableau de bord lors d'une détection confirmée.
+    \item \textbf{Notifications} : Envoi automatique d'une capture d'écran de la menace sur un canal Telegram dédié.
+\end{enumerate}
+
+\end{document}

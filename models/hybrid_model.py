@@ -106,7 +106,7 @@ class HybridWeaponDetector(nn.Module):
         """
         self.eval()
         with torch.inference_mode():
-            # Basic preprocessing (BGR to RGB and Normalisation)
+            # Basic preprocessing (expects BGR numpy array; normalize to [0, 1])
             if isinstance(frame, np.ndarray):
                 # Simple Resize if not 640x640
                 if frame.shape[:2] != (640, 640):
