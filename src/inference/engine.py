@@ -48,10 +48,16 @@ import base64
 import numpy as np
 import logging
 import threading
+import torch
 from typing import Optional, List, Dict
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+# COCO class 0 = "person". This is the ONLY class we extract from the
+# general-purpose COCO model (yolov8n) to use as a "hand/person" proxy
+# for the proximity-based threat scoring pipeline.
+_COCO_PERSON_CLASS_ID = 0
 
 class _CameraThread:
     """Continuously reads frames in a background thread."""
@@ -154,6 +160,21 @@ class InferenceEngine:
         self.camera_id = settings.get("camera_id", "CAM-01")
         self.loop = None
 
+        # ── Performance: detect CPU vs GPU and auto-tune ──
+        self._on_gpu = next(weapon_model.parameters()).device.type == "cuda"
+        if not self._on_gpu:
+            logger.warning(
+                "Running on CPU — enabling performance mitigations: "
+                "frame downscale, SAHI disabled, wider inference cadence."
+            )
+
+        # ── Weapon model readiness probe ──
+        # Run a single forward pass on a blank frame.  If the model produces
+        # zero detections it is likely still undertrained (e.g. early ~5-epoch
+        # checkpoint).  We keep track so the loop can skip the expensive
+        # weapon inference and only run the person/hand stream.
+        self._weapon_model_ready = self._probe_weapon_model()
+
     def start(self):
         """
         Begin the async frame processing loop.
@@ -162,7 +183,11 @@ class InferenceEngine:
         self.running = True
         self.loop = asyncio.get_running_loop()
         asyncio.create_task(self._run_loop())
-        logger.info(f"Inference engine started for source: {self.camera_source}")
+        logger.info(
+            f"Inference engine started for source: {self.camera_source} | "
+            f"GPU={'yes' if self._on_gpu else 'NO — CPU mode'} | "
+            f"weapon_model_ready={self._weapon_model_ready}"
+        )
 
     def stop(self):
         """Signal the processing loop to exit gracefully."""
@@ -172,6 +197,39 @@ class InferenceEngine:
     def get_queue(self):
         """Returns the asyncio.Queue for consumers."""
         return self.queue
+
+    def _probe_weapon_model(self) -> bool:
+        """
+        Quick sanity check: run the weapon model on a blank 640×640 frame.
+        If it returns detections on pure black, the model is at least
+        functional.  If it returns nothing on a test image, flag it.
+        We do NOT block startup — the model is always loaded and will be
+        retried periodically in case weights are hot-swapped at runtime.
+        """
+        try:
+            test_frame = np.zeros((640, 640, 3), dtype=np.uint8)
+            dets = self.weapon_model.predict(test_frame, conf_threshold=0.10)
+            if len(dets) == 0:
+                if not self._on_gpu:
+                    # On CPU the heavy model (YOLO11m+Swin) takes ~2-5s/frame
+                    # for ZERO useful output.  Disable it completely.
+                    logger.warning(
+                        "Weapon model produced 0 detections on probe AND running "
+                        "on CPU — DISABLING weapon stream for performance. "
+                        "Only the person/hand stream will run. "
+                        "Swap in a trained best.pt and restart to enable."
+                    )
+                    return False
+                else:
+                    logger.warning(
+                        "Weapon model produced 0 detections on probe frame. "
+                        "Weapon stream stays active (GPU is fast enough). "
+                        "Swap in a trained best.pt for real detections."
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"Weapon model probe FAILED: {e} — disabling weapon stream.")
+            return False
 
     async def _run_loop(self):
         """Wrapper to run the blocking inference loop in a separate thread."""
@@ -213,6 +271,22 @@ class InferenceEngine:
             iou_threshold = self.settings.get("iou_threshold", 0.45)
             gradcam_on_high = self.settings.get("gradcam_on_high", True)
 
+            # ── CPU performance: widen cadence automatically ──
+            if not self._on_gpu:
+                inference_every_n = max(inference_every_n, 5)
+
+            h_orig, w_orig = frame.shape[:2]
+
+            # ── CPU performance: downscale large frames ──
+            # On CPU, processing a 1080p frame is far too slow.
+            # We resize to 640px wide (preserving aspect ratio) for inference
+            # and keep the original for the UI JPEG.
+            display_frame = frame
+            if not self._on_gpu and max(h_orig, w_orig) > 640:
+                scale = 640.0 / max(h_orig, w_orig)
+                frame = cv2.resize(frame, None, fx=scale, fy=scale,
+                                   interpolation=cv2.INTER_LINEAR)
+
             h, w = frame.shape[:2]
 
             if self.frame_id % inference_every_n != 0:
@@ -224,42 +298,62 @@ class InferenceEngine:
                 high_threat_sd = last_high_threat_sd
             else:
                 # 1. Dual-Cadence Inference (Weapon Stream)
-                try:
-                    # Note: sahi_every_n is relative to inference frames
-                    is_sahi_frame = (self.frame_id % (inference_every_n * sahi_every_n) == 0)
-                    if is_sahi_frame:
-                        weapon_dets = self.sahi_pipeline.run(frame)
-                    else:
-                        weapon_dets = self.weapon_model.predict(frame, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
-                    
-                    # Convert normalized [0,1] bboxes to pixel space for
-                    # ThreatScorer (grid-cell computation needs pixel coords).
-                    # SAHI pipeline already returns pixel-space coords.
-                    if not is_sahi_frame:
+                weapon_dets = []
+                if self._weapon_model_ready:
+                    try:
+                        # On CPU: NEVER run SAHI (far too slow with tiling).
+                        # On GPU: respect the sahi_every_n cadence.
+                        is_sahi_frame = (
+                            self._on_gpu
+                            and (self.frame_id % (inference_every_n * sahi_every_n) == 0)
+                        )
+                        if is_sahi_frame:
+                            weapon_dets = self.sahi_pipeline.run(frame)
+                        else:
+                            weapon_dets = self.weapon_model.predict(
+                                frame,
+                                conf_threshold=conf_threshold,
+                                iou_threshold=iou_threshold,
+                            )
+                        
+                        # Convert normalized [0,1] bboxes to pixel space for
+                        # ThreatScorer (grid-cell computation needs pixel coords).
+                        # SAHI pipeline already returns pixel-space coords.
+                        if not is_sahi_frame:
+                            for det in weapon_dets:
+                                bbox = det.get("bbox", [0, 0, 0, 0])
+                                if all(0 <= v <= 1.0 for v in bbox) and w > 1 and h > 1:
+                                    det["bbox"] = [bbox[0]*w, bbox[1]*h, bbox[2]*w, bbox[3]*h]
+                        # Mark all weapon dets as already in pixel space so
+                        # _format_detections_for_ui doesn't re-convert.
                         for det in weapon_dets:
-                            bbox = det.get("bbox", [0, 0, 0, 0])
-                            if all(0 <= v <= 1.0 for v in bbox) and w > 1 and h > 1:
-                                det["bbox"] = [bbox[0]*w, bbox[1]*h, bbox[2]*w, bbox[3]*h]
-                    # Mark all weapon dets as already in pixel space so
-                    # _format_detections_for_ui doesn't re-convert.
-                    for det in weapon_dets:
-                        det['_pixel_space'] = True
-                except Exception as e:
-                    logger.error(f"Weapon inference failed: {e}")
-                    weapon_dets = []
+                            det['_pixel_space'] = True
+                    except Exception as e:
+                        logger.error(f"Weapon inference failed: {e}")
+                        weapon_dets = []
 
-                # 2. Hand Stream
+                # 2. Hand/Person Stream (COCO yolov8n)
+                # IMPORTANT: yolov8n is a general COCO model with 80 classes.
+                # We ONLY keep class 0 ("person") detections as a proxy for
+                # hand/body presence in the threat-scoring pipeline.
                 try:
                     hand_results = self.hand_model(frame, verbose=False)[0]
                     hand_dets = []
                     for r in hand_results.boxes.data.tolist():
                         x1, y1, x2, y2, conf, cls = r
+                        coco_cls = int(cls)
+                        # Filter: only keep COCO person detections
+                        if coco_cls != _COCO_PERSON_CLASS_ID:
+                            continue
                         hand_dets.append({
                             "bbox": [x1, y1, x2, y2],
-                            "class_id": int(cls),
+                            "class_id": 99,  # Dedicated ID for person/hand stream
+                                              # MUST NOT be 0 — that collides with
+                                              # Weapon (class_id=0) in ThreatScorer
                             "class_name": "hand",
                             "confidence": conf,
-                            "is_weapon": False
+                            "is_weapon": False,
+                            "_pixel_space": True,
                         })
                 except Exception as e:
                     logger.error(f"Hand inference failed: {e}")
@@ -332,12 +426,21 @@ class InferenceEngine:
                         logger.error(f"Alert dispatch failed: {e}")
 
             # 5. UI Payload Preparation
-            h, w = frame.shape[:2]
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            # Encode the ORIGINAL (non-downscaled) frame for display quality
+            ui_frame = display_frame
+            h_ui, w_ui = ui_frame.shape[:2]
+            _, buffer = cv2.imencode('.jpg', ui_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             frame_b64 = base64.b64encode(buffer).decode('utf-8')
             
             # Convert detections to the format expected by the React frontend
-            ui_detections = self._format_detections_for_ui(all_detections, w, h)
+            # Scale bboxes back to display resolution if we downscaled for inference
+            if not self._on_gpu and max(h_orig, w_orig) > 640:
+                scale_back = max(h_orig, w_orig) / 640.0
+                for det in all_detections:
+                    bbox = det.get("bbox", [0, 0, 0, 0])
+                    if det.get("_pixel_space", False):
+                        det["bbox"] = [b * scale_back for b in bbox]
+            ui_detections = self._format_detections_for_ui(all_detections, w_ui, h_ui)
 
             fps_counter += 1
             if time.time() - fps_start_time > 1.0:
@@ -398,9 +501,10 @@ class InferenceEngine:
                 else:
                     px1, py1, px2, py2 = bbox
             
-            # Determine is_weapon based on class_id (0=Weapon) or existing field
+            # Use the explicit is_weapon flag (set by the weapon model or engine).
+            # Default to False — never guess based on class_id.
             class_id = det.get("class_id", -1)
-            is_weapon = det.get("is_weapon", class_id == 0)
+            is_weapon = det.get("is_weapon", False)
             
             formatted.append({
                 "bbox": {"x1": px1, "y1": py1, "x2": px2, "y2": py2},

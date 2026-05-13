@@ -435,11 +435,13 @@ class DetectionHead(nn.Module):
         
         results = []
         for i in keep:
+            cid = int(img_class_ids[i])
             results.append({
                 "bbox": boxes[i].tolist(),
-                "class_id": int(img_class_ids[i]),
-                "class_name": ["Weapon", "Person", "Confuser"][int(img_class_ids[i])],
-                "confidence": float(img_conf[i])
+                "class_id": cid,
+                "class_name": ["Weapon", "Person", "Confuser"][cid],
+                "confidence": float(img_conf[i]),
+                "is_weapon": cid == 0,  # Only class 0 is a weapon
             })
             
         return results

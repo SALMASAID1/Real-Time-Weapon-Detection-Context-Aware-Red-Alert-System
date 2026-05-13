@@ -21,10 +21,15 @@ class ThreatScorer:
 
     def score(self, detections: List[Dict], frame_id: int) -> List[ScoredDetection]:
         # 1. Separate Hands and Weapons
-        # Only match detections from the dedicated Hand model (Stream B).
-        # Do NOT use class_id == 1 — that matches "Person" from the weapon model.
+        # Hands  → identified by class_name == "hand" (from the COCO person stream)
+        # Weapons → identified by is_weapon == True (from the HybridWeaponDetector)
+        #
+        # IMPORTANT: Do NOT filter weapons by class_id == 0 alone!
+        # COCO person class is also id 0, which caused false RED ALERTs
+        # on every person detection.  We now use the explicit is_weapon flag
+        # that the engine sets only on detections from the weapon model.
         hands = [d for d in detections if d.get('class_name') == 'hand']
-        weapons = [d for d in detections if d.get('class_id') == 0] # 0 is Weapon in our data.yaml
+        weapons = [d for d in detections if d.get('is_weapon', False)]
         
         # 2. Get Proximity Scores
         proximity_data = self.iou_calc.max_iou_per_weapon(hands, weapons)
