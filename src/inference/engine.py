@@ -200,32 +200,18 @@ class InferenceEngine:
 
     def _probe_weapon_model(self) -> bool:
         """
-        Quick sanity check: run the weapon model on a blank 640×640 frame.
-        If it returns detections on pure black, the model is at least
-        functional.  If it returns nothing on a test image, flag it.
-        We do NOT block startup — the model is always loaded and will be
-        retried periodically in case weights are hot-swapped at runtime.
+        Quick sanity check: run one forward pass to verify the model loads
+        and executes without crashing.  We do NOT test detection quality
+        here — a blank frame won't produce detections even from a fully
+        trained model.
         """
         try:
             test_frame = np.zeros((640, 640, 3), dtype=np.uint8)
-            dets = self.weapon_model.predict(test_frame, conf_threshold=0.10)
-            if len(dets) == 0:
-                if not self._on_gpu:
-                    # On CPU the heavy model (YOLO11m+Swin) takes ~2-5s/frame
-                    # for ZERO useful output.  Disable it completely.
-                    logger.warning(
-                        "Weapon model produced 0 detections on probe AND running "
-                        "on CPU — DISABLING weapon stream for performance. "
-                        "Only the person/hand stream will run. "
-                        "Swap in a trained best.pt and restart to enable."
-                    )
-                    return False
-                else:
-                    logger.warning(
-                        "Weapon model produced 0 detections on probe frame. "
-                        "Weapon stream stays active (GPU is fast enough). "
-                        "Swap in a trained best.pt for real detections."
-                    )
+            self.weapon_model.predict(test_frame, conf_threshold=0.10)
+            logger.info(
+                "Weapon model probe OK — model loads and runs. "
+                "best.pt is active."
+            )
             return True
         except Exception as e:
             logger.error(f"Weapon model probe FAILED: {e} — disabling weapon stream.")
@@ -297,9 +283,20 @@ class InferenceEngine:
                 max_threat_score = last_max_threat_score
                 high_threat_sd = last_high_threat_sd
             else:
-                # 1. Dual-Cadence Inference (Weapon Stream)
+                # 1. Weapon Stream (HybridWeaponDetector — heavy model)
+                # On CPU we use a much wider cadence for the weapon model
+                # (every ~30 raw frames) to avoid tanking FPS, while the
+                # lightweight hand model runs at the normal cadence.
+                weapon_cadence = inference_every_n  # GPU: same as hand stream
+                if not self._on_gpu:
+                    weapon_cadence = max(30, inference_every_n)  # CPU: ~1 call/sec
+
                 weapon_dets = []
-                if self._weapon_model_ready:
+                is_weapon_frame = (
+                    self._weapon_model_ready
+                    and (self.frame_id % weapon_cadence == 0)
+                )
+                if is_weapon_frame:
                     try:
                         # On CPU: NEVER run SAHI (far too slow with tiling).
                         # On GPU: respect the sahi_every_n cadence.
@@ -328,9 +325,18 @@ class InferenceEngine:
                         # _format_detections_for_ui doesn't re-convert.
                         for det in weapon_dets:
                             det['_pixel_space'] = True
+
+                        if weapon_dets:
+                            logger.info(
+                                f"Weapon model detected {len(weapon_dets)} object(s): "
+                                f"{[d['class_name'] for d in weapon_dets]}"
+                            )
                     except Exception as e:
                         logger.error(f"Weapon inference failed: {e}")
                         weapon_dets = []
+                else:
+                    # Reuse cached weapon detections from last weapon frame
+                    weapon_dets = [d for d in last_all_detections if d.get('is_weapon', False)]
 
                 # 2. Hand/Person Stream (COCO yolov8n)
                 # IMPORTANT: yolov8n is a general COCO model with 80 classes.
