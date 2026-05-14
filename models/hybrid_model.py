@@ -54,7 +54,7 @@ class HybridWeaponDetector(nn.Module):
     nc               : int   — number of classes (3, matches dataset.yaml)
     device           : str   — "cuda" or "cpu"
     """
-    def __init__(self, backbone_variant="yolo11m.pt", pretrained=True, nc=3, device="cuda"):
+    def __init__(self, backbone_variant="yolo11n.pt", pretrained=True, nc=3, device="cuda"):
         super().__init__()
         self.device = device
         self.nc = nc
@@ -74,8 +74,8 @@ class HybridWeaponDetector(nn.Module):
             embed_dim=256,
             num_heads=4,
             window_size=7,
-            num_blocks=2,
-            imgsz=640
+            num_blocks=1,  # Reduced from 2 to 1 for Nano speed
+            imgsz=640      # Default, but predict() now handles dynamic resize
         )
         
         # 3. Head
@@ -108,9 +108,14 @@ class HybridWeaponDetector(nn.Module):
         with torch.inference_mode():
             # Basic preprocessing (expects BGR numpy array; normalize to [0, 1])
             if isinstance(frame, np.ndarray):
-                # Simple Resize if not 640x640
-                if frame.shape[:2] != (640, 640):
-                    frame = cv2.resize(frame, (640, 640))
+                # Use current image dimensions (DetectionHead is now dynamic!)
+                h, w = frame.shape[:2]
+                # Snap to nearest 32 for YOLO compatibility
+                new_h = (h + 16) // 32 * 32
+                new_w = (w + 16) // 32 * 32
+                
+                if (new_h, new_w) != (h, w):
+                    frame = cv2.resize(frame, (new_w, new_h))
                 
                 # Keep BGR order — matches YOLODataset training pipeline
                 x = torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0

@@ -133,14 +133,9 @@ class DetectionHead(nn.Module):
             
         return torch.cat(cls_logits, dim=1), torch.cat(bbox_offsets, dim=1), torch.cat(objectness, dim=1)
 
-    def _generate_anchor_centers(self, device):
+    def _generate_anchor_centers(self, device, imgsz=640):
         """
         Pre-compute normalized (cx, cy) anchor centres for each FPN level.
-
-        For a 640×640 input the grid sizes are:
-            P3: 80×80 (stride  8)
-            P4: 40×40 (stride 16)
-            P5: 20×20 (stride 32)
 
         Returns
         -------
@@ -151,16 +146,14 @@ class DetectionHead(nn.Module):
         """
         device = torch.device(device)
         if device.type == "cuda" and device.index is None:
-            # Ensure a stable cache key even when callers pass device="cuda".
             device = torch.device("cuda", torch.cuda.current_device())
 
-        cache_key = str(device)
+        cache_key = f"{device}_{imgsz}"
         cached = self._anchor_cache.get(cache_key)
         if cached is not None:
             return cached
 
         strides = [8, 16, 32]
-        imgsz = 640  # training resolution
         centers_list = []
         strides_list = []
 
@@ -217,8 +210,22 @@ class DetectionHead(nn.Module):
         if cls.ndim > 1:
             cls = cls.squeeze(-1)
 
+        # 0. Derive imgsz from the number of anchors
+        # num_anchors = (imgsz/8)^2 + (imgsz/16)^2 + (imgsz/32)^2
+        # For 640: 6400 + 1600 + 400 = 8400
+        # For 512: 4096 + 1024 + 256 = 5376
+        # We solve for imgsz based on standard strides
+        n_a = num_anchors
+        # imgsz^2 * (1/64 + 1/256 + 1/1024) = n_a
+        # imgsz^2 * (16/1024 + 4/1024 + 1/1024) = n_a
+        # imgsz^2 * (21/1024) = n_a
+        import math
+        imgsz = int(math.sqrt((n_a * 1024) / 21))
+        # Snap to nearest multiple of 32 for safety
+        imgsz = (imgsz + 16) // 32 * 32
+
         # Anchor centres — (num_anchors, 2)
-        anchor_centers, _ = self._generate_anchor_centers(device)
+        anchor_centers, _ = self._generate_anchor_centers(device, imgsz=imgsz)
 
         # Clamp K to the number of available anchors
         k = min(topk, num_anchors)
@@ -338,8 +345,14 @@ class DetectionHead(nn.Module):
         num_fg = fg_mask.sum().item()
 
         if num_fg > 0:
+            # 0. Derive imgsz from predictions (same logic as build_targets)
+            B, num_anchors, _ = cls_logits.shape
+            import math
+            imgsz_val = int(math.sqrt((num_anchors * 1024) / 21))
+            imgsz_val = (imgsz_val + 16) // 32 * 32
+
             # Decode DFL regression offsets → [cx, cy, w, h] for positive anchors
-            anchor_centers, anchor_strides = self._generate_anchor_centers(device)
+            anchor_centers, anchor_strides = self._generate_anchor_centers(device, imgsz=imgsz_val)
 
             # Foreground indices (num_fg, 2): [batch_index, anchor_index]
             fg_idx = fg_mask.nonzero(as_tuple=False)
@@ -361,8 +374,7 @@ class DetectionHead(nn.Module):
             fg_strides = anchor_strides[fg_a]  # (num_fg, 1)
 
             # Convert ltrb distances (in stride units) to [cx, cy, w, h] normalized
-            imgsz = 640.0
-            stride_norm = fg_strides / imgsz  # normalize stride to [0,1]
+            stride_norm = fg_strides / float(imgsz_val)  # normalize stride to [0,1]
             
             # Correct BBox center: cx_new = cx_anchor + (r - l) / 2
             # fg_dist: [l, t, r, b]
@@ -415,7 +427,12 @@ class DetectionHead(nn.Module):
         img_reg_offsets = reg_offsets[b][mask[b]]
         
         # 3. Decode Bounding Boxes
-        anchor_centers, anchor_strides = self._generate_anchor_centers(device)
+        B, num_anchors, _ = cls_logits.shape
+        import math
+        imgsz_val = int(math.sqrt((num_anchors * 1024) / 21))
+        imgsz_val = (imgsz_val + 16) // 32 * 32
+
+        anchor_centers, anchor_strides = self._generate_anchor_centers(device, imgsz=imgsz_val)
         fg_centers = anchor_centers[mask[b]]
         fg_strides = anchor_strides[mask[b]]
         
@@ -427,8 +444,7 @@ class DetectionHead(nn.Module):
         fg_dist = (fg_reg * proj).sum(dim=-1) # (num_fg, 4) - ltrb in stride units
         
         # Convert ltrb to [x1, y1, x2, y2] normalized
-        imgsz = 640.0
-        stride_norm = fg_strides / imgsz
+        stride_norm = fg_strides / float(imgsz_val)
         
         # pred_ltrb = [l, t, r, b]
         # x1 = cx - l * stride
