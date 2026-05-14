@@ -8,6 +8,8 @@ torch>=2.2.0                # Optimized for Python 3.11
 torchvision>=0.17.0         # Matching Torch version
 opencv-python>=4.9.0        # Latest stable CV2
 sahi>=0.11.16               # Tiled SAHI inference + NMS merge
+onnx>=1.15.0                # ONNX Model export
+onnxruntime-gpu>=1.17.0     # High-performance ONNX inference engine
 
 # Transformer & Attention
 timm>=0.9.0                 # SwinTransformerBlock for neck integration

@@ -71,8 +71,8 @@ class HybridWeaponDetector(nn.Module):
         # 2. Neck
         self.neck = SwinNeck(
             in_channels=in_channels,
-            embed_dim=512,
-            num_heads=8,
+            embed_dim=256,
+            num_heads=4,
             window_size=7,
             num_blocks=2,
             imgsz=640

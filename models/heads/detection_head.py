@@ -75,6 +75,10 @@ class DetectionHead(nn.Module):
         self.gamma = gamma
         self.alpha = alpha
         self.reg_max = reg_max
+
+        # Cache anchor centers/strides per device to avoid recomputing meshgrids every batch.
+        # Keyed by stringified device (e.g. "cpu", "cuda:0").
+        self._anchor_cache = {}
         
         self.cls_heads = nn.ModuleList()
         self.reg_heads = nn.ModuleList()
@@ -145,6 +149,16 @@ class DetectionHead(nn.Module):
         anchor_strides : Tensor (total_anchors, 1)
             Stride for each anchor in pixel units.
         """
+        device = torch.device(device)
+        if device.type == "cuda" and device.index is None:
+            # Ensure a stable cache key even when callers pass device="cuda".
+            device = torch.device("cuda", torch.cuda.current_device())
+
+        cache_key = str(device)
+        cached = self._anchor_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         strides = [8, 16, 32]
         imgsz = 640  # training resolution
         centers_list = []
@@ -164,7 +178,9 @@ class DetectionHead(nn.Module):
             centers_list.append(torch.stack([cx, cy], dim=-1).reshape(-1, 2))
             strides_list.append(torch.full((grid_h * grid_w, 1), s, dtype=torch.float32, device=device))
 
-        return torch.cat(centers_list, dim=0), torch.cat(strides_list, dim=0)
+        anchors = (torch.cat(centers_list, dim=0), torch.cat(strides_list, dim=0))
+        self._anchor_cache[cache_key] = anchors
+        return anchors
 
     def build_targets(self, pred_shape, batch, device, topk=13):
         """
@@ -218,12 +234,12 @@ class DetectionHead(nn.Module):
                 # Select the K nearest anchors
                 _, topk_indices = dists.topk(k, largest=False)
 
-                for anchor_idx in topk_indices:
-                    a = anchor_idx.item()
-                    target_cls[b_idx, a, cls_idx] = 1.0
-                    target_obj[b_idx, a, 0]       = 1.0
-                    target_bbox[b_idx, a]         = bboxes[i].to(device)
-                    fg_mask[b_idx, a]              = True
+                # Vectorized assignment (avoids Python loops)
+                target_cls[b_idx, topk_indices, cls_idx] = 1.0
+                target_obj[b_idx, topk_indices, 0] = 1.0
+                gt_box = bboxes[i].to(device)
+                target_bbox[b_idx, topk_indices] = gt_box.unsqueeze(0).expand(topk_indices.shape[0], -1)
+                fg_mask[b_idx, topk_indices] = True
             else:
                 # Fallback: no bboxes available — assign all anchors (gradient-flow check)
                 target_cls[b_idx, :, cls_idx] = 1.0
@@ -325,8 +341,13 @@ class DetectionHead(nn.Module):
             # Decode DFL regression offsets → [cx, cy, w, h] for positive anchors
             anchor_centers, anchor_strides = self._generate_anchor_centers(device)
 
+            # Foreground indices (num_fg, 2): [batch_index, anchor_index]
+            fg_idx = fg_mask.nonzero(as_tuple=False)
+            fg_b = fg_idx[:, 0]
+            fg_a = fg_idx[:, 1]
+
             # Gather foreground predictions: (num_fg, 4*reg_max)
-            fg_reg = reg_offsets[fg_mask]
+            fg_reg = reg_offsets[fg_b, fg_a]
 
             # DFL decode: softmax over reg_max bins → expected value per side
             B_fg = fg_reg.shape[0]
@@ -335,18 +356,9 @@ class DetectionHead(nn.Module):
             proj = torch.arange(self.reg_max, dtype=torch.float32, device=device)
             fg_dist = (fg_reg * proj).sum(dim=-1)                # (num_fg, 4) — ltrb
 
-            # Get anchor centres and strides for positive anchors
-            # fg_mask is (B, num_anchors) — expand to get per-anchor indices
-            fg_anchor_idx = fg_mask.any(dim=0).nonzero(as_tuple=True)[0]  # approximate per-anchor
-            # More precise: iterate batch
-            fg_centers_list = []
-            fg_strides_list = []
-            for b in range(fg_mask.shape[0]):
-                per_img = fg_mask[b].nonzero(as_tuple=True)[0]
-                fg_centers_list.append(anchor_centers[per_img])
-                fg_strides_list.append(anchor_strides[per_img])
-            fg_centers = torch.cat(fg_centers_list, dim=0)  # (num_fg, 2)
-            fg_strides = torch.cat(fg_strides_list, dim=0)  # (num_fg, 1)
+            # Anchor centres and strides for positive anchors (vectorized)
+            fg_centers = anchor_centers[fg_a]  # (num_fg, 2)
+            fg_strides = anchor_strides[fg_a]  # (num_fg, 1)
 
             # Convert ltrb distances (in stride units) to [cx, cy, w, h] normalized
             imgsz = 640.0
@@ -361,7 +373,7 @@ class DetectionHead(nn.Module):
             
             pred_boxes = torch.cat([pred_cx, pred_cy, pred_w, pred_h], dim=1)  # (num_fg, 4)
 
-            gt_boxes = target_bbox[fg_mask]  # (num_fg, 4)
+            gt_boxes = target_bbox[fg_b, fg_a]  # (num_fg, 4)
             loss_box = self._ciou_loss(pred_boxes, gt_boxes)
 
         # Loss weights (following YOLO convention: box=7.5, cls=0.5, obj=1.5)

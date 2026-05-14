@@ -101,22 +101,47 @@ async def lifespan(app: FastAPI):
     
     # 1. Models
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    weapon_model = HybridWeaponDetector(
-        backbone_variant=os.getenv("BACKBONE_VARIANT", "yolo11m.pt"),
-        nc=3,
-        device=device
-    )
     
-    weights_path = os.getenv("MODEL_WEIGHTS_PATH", "models/weights/best.pt")
-    if os.path.exists(weights_path):
-        try:
-            weapon_model.load_state_dict(torch.load(weights_path, map_location=device))
-            logger.info(f"Loaded weapon model weights from {weights_path}")
-            if device == "cuda":
-                weapon_model.half()
-                logger.info("Weapon model converted to FP16 (half precision).")
-        except Exception as e:
-            logger.error(f"Failed to load weapon weights: {e}")
+    onnx_weights_path = os.getenv("ONNX_WEIGHTS_PATH", "models/weights/best.onnx")
+    pt_weights_path = os.getenv("MODEL_WEIGHTS_PATH", "models/weights/best.pt")
+    
+    if os.path.exists(onnx_weights_path):
+        from models.onnx_model import ONNXWeaponDetector
+        logger.info(f"🚀 Found ONNX model at {onnx_weights_path}. Loading ONNX Runtime for max inference speed!")
+        weapon_model = ONNXWeaponDetector(onnx_path=onnx_weights_path, device=device)
+        
+        # GradCAM requires PyTorch layers to compute gradients. Load a CPU PyTorch model just for GradCAM
+        # since it only runs occasionally during Red Alerts.
+        logger.info("Loading PyTorch model into CPU memory for GradCAM explainability...")
+        gradcam_model = HybridWeaponDetector(
+            backbone_variant=os.getenv("BACKBONE_VARIANT", "yolo11s.pt"),
+            nc=3,
+            device="cpu"
+        )
+        if os.path.exists(pt_weights_path):
+            try:
+                gradcam_model.load_state_dict(torch.load(pt_weights_path, map_location="cpu"))
+            except Exception as e:
+                logger.error(f"Failed to load weights for GradCAM: {e}")
+        gradcam = GradCAMGenerator(gradcam_model)
+        
+    else:
+        logger.info("⚠️ ONNX model not found. Falling back to native PyTorch model.")
+        weapon_model = HybridWeaponDetector(
+            backbone_variant=os.getenv("BACKBONE_VARIANT", "yolo11s.pt"),
+            nc=3,
+            device=device
+        )
+        if os.path.exists(pt_weights_path):
+            try:
+                weapon_model.load_state_dict(torch.load(pt_weights_path, map_location=device))
+                logger.info(f"Loaded weapon model weights from {pt_weights_path}")
+                if device == "cuda":
+                    weapon_model.half()
+                    logger.info("Weapon model converted to FP16 (half precision).")
+            except Exception as e:
+                logger.error(f"Failed to load weapon weights: {e}")
+        gradcam = GradCAMGenerator(weapon_model)
             
     hand_model = YOLO(os.getenv("HAND_MODEL_PATH", "yolov8n.pt"))
     
@@ -130,9 +155,6 @@ async def lifespan(app: FastAPI):
     )
     iou_calc = IoUCalculator(mode="giou")
     threat_scorer = ThreatScorer(iou_calc)
-    
-    # Grad-CAM — now initialized with the real model
-    gradcam = GradCAMGenerator(weapon_model)
     
     log_path = os.getenv("THREAT_LOG_PATH", "data/logs/threats.jsonl")
 
