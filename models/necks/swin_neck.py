@@ -140,7 +140,7 @@ class SwinNeck(nn.Module):
         enriched_p3 = p3 + p4_up
         
         # Downsample P4 to P5 and add
-        p4_down = F.adaptive_max_pool2d(self.lat_p4_to_p5(enriched_p4), output_size=p5.shape[2:])
+        p4_down = F.max_pool2d(self.lat_p4_to_p5(enriched_p4), kernel_size=2, stride=2)
         enriched_p5 = p5 + p4_down
         
         return {

@@ -60,6 +60,11 @@ class ONNXWeaponDetector:
         """
         Runs the ONNX graph and decodes the results.
         """
+        # Save original dimensions for scaling boxes back later
+        orig_shape = None
+        if isinstance(frame, np.ndarray):
+            orig_shape = frame.shape[:2]
+            
         # 1. Preprocess
         if isinstance(frame, np.ndarray):
             if frame.shape[:2] != (640, 640):
@@ -85,8 +90,19 @@ class ONNXWeaponDetector:
             torch.from_numpy(objectness).to(self.device)
         )
         
-        return self.head.decode_predictions(
+        results = self.head.decode_predictions(
             preds, 
             conf_thres=conf_threshold, 
             iou_thres=iou_threshold
         )
+        
+        # 4. Scale bounding boxes back to original frame size
+        if orig_shape and orig_shape != (640, 640):
+            h_orig, w_orig = orig_shape
+            scale_x = w_orig / 640.0
+            scale_y = h_orig / 640.0
+            for det in results:
+                b = det['bbox']
+                det['bbox'] = [b[0] * scale_x, b[1] * scale_y, b[2] * scale_x, b[3] * scale_y]
+                
+        return results

@@ -161,7 +161,13 @@ class InferenceEngine:
         self.loop = None
 
         # ── Performance: detect CPU vs GPU and auto-tune ──
-        self._on_gpu = next(weapon_model.parameters()).device.type == "cuda"
+        if hasattr(weapon_model, "device"):
+            self._on_gpu = str(weapon_model.device) == "cuda"
+        else:
+            try:
+                self._on_gpu = next(iter(weapon_model.parameters())).device.type == "cuda"
+            except Exception:
+                self._on_gpu = False
         if not self._on_gpu:
             logger.warning(
                 "Running on CPU — enabling performance mitigations: "
