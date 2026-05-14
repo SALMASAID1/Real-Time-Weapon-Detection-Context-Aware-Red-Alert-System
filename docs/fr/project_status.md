@@ -1,8 +1,8 @@
 # 📊 État du Projet : Système de Détection d'Armes
-**Dernière mise à jour :** 12 mai 2026
+**Dernière mise à jour :** 14 mai 2026
 
 ## 📝 Résumé Exécutif
-Le projet a complété les **Phases 1 à 4** de la feuille de route de développement. L'ensemble du pipeline système — de l'architecture du modèle au tableau de bord en temps réel — est structurellement complet et intégré. L'accent est actuellement mis sur la **Phase 5 : Optimisation et Déploiement**, avec l'exécution complète de 50 époques d'entraînement comme principal bloqueur pour une inférence de qualité production.
+Le projet a complété les **Phases 1 à 4** de la feuille de route de développement. L'ensemble du pipeline système — de l'architecture du modèle au tableau de bord en temps réel — est structurellement complet et intégré. L'accent est actuellement mis sur la **Phase 5 : Optimisation et Déploiement**. L'environnement de déploiement local a été configuré, incluant l'export ONNX pour l'accélération de l'inférence, et des scripts de démarrage multiplateformes (`start_system.sh` / `.bat`) ont été implémentés. L'exécution complète de 50 époques d'entraînement reste le principal bloqueur pour une précision de qualité production.
 
 Un point de contrôle `best.pt` de stade précoce est utilisé comme espace réservé fonctionnel pour permettre l'intégration et les tests de bout en bout du système pendant que l'entraînement se termine.
 
@@ -16,8 +16,8 @@ Un point de contrôle `best.pt` de stade précoce est utilisé comme espace rés
 *   Augmentation synthétique (pluie, brouillard, faible luminosité) pour une robustesse 24h/24.
 
 ### Jalon 2 : Architecture du Modèle Hybride ✅
-*   **YOLOBackbone** (`yolo11m.pt`) : Passage avant couche par couche aux indices `[4, 6, 10]` pour une extraction P3/P4/P5 compatible DataParallel.
-*   **SwinNeck** : SwinTransformerBlock timm (window_size=7, 2 blocs) avec connexions latérales FPN.
+*   **YOLOBackbone** (`yolo11n.pt`) : Passage avant couche par couche aux indices `[4, 6, 10]` pour une extraction P3/P4/P5 compatible DataParallel.
+*   **SwinNeck** : SwinTransformerBlock timm (window_size=7, 1 bloc) avec connexions latérales FPN. Remplacement de `adaptive_max_pool2d` par `max_pool2d` pour la compatibilité ONNX.
 *   **DetectionHead** : Branches cls/reg/obj découplées, Focal Loss (γ=2.0, α=0.25), régression DFL (reg_max=16), perte de boîte CIoU.
 *   **Pipeline d'Entraînement** : 7 itérations, v7 finale avec LR différentiel et Cosine Annealing.
 
@@ -30,26 +30,29 @@ Un point de contrôle `best.pt` de stade précoce est utilisé comme espace rés
 
 ### Jalon 4 : Alertes Multimodales et Tableau de Bord ✅
 *   **AlertDispatcher** : Telegram (asynchrone), audio Pygame (lecture en 3 boucles), journalisation JSONL, déduplication avec refroidissement de 30s.
-*   **InferenceEngine** : Double cadence (SAHI tous les N + léger), double flux (Armes + Mains), diffusion par file asyncio.Queue.
+*   **InferenceEngine** : Double cadence (SAHI tous les N + léger), double flux (Armes + Mains), diffusion par file asyncio.Queue. Correction du bug des paramètres simulés ONNX.
 *   **Backend FastAPI** : WebSocket `/ws/stream/{camera_id}`, REST `/api/threats` (CRUD), `/api/settings` (application en direct).
 *   **Tableau de Bord React** : LiveMonitor (VideoCanvas + panneau latéral), ThreatHistory (paginé + filtré), Settings (ThresholdPanel).
+
+### Jalon 5 : Configuration de l'Environnement Local ✅
+*   **Export de Modèle** : Export réussi de `best.pt` vers `best.onnx` (opset 14) via `export_onnx.py`.
+*   **Environnement** : Environnement virtuel Python et dépendances Node.js installés.
+*   **Scripts de Démarrage** : Création de `start_system.sh` (Linux/macOS) et `start_system.bat` (Windows) avec logique d'arrêt en douceur.
 
 ---
 
 ## 🚧 Travaux en Cours (Phase 5)
+*   **Tests Système** : Test de l'inférence de bout en bout en utilisant le modèle ONNX de substitution via la webcam.
 *   **Entraînement du Modèle** : Exécution de 50 époques en attente sur GPU (Colab/Kaggle). Le `best.pt` actuel provient d'un entraînement précoce (~5 époques).
-*   **Intégration Système** : Tous les modules sont connectés et fonctionnels avec les poids du modèle de substitution.
-*   **En Attente** : Quantification TensorRT (après la disponibilité du `best.pt` final).
 
 ---
 
 ## ⏭️ Prochaines Étapes Immédiates
-1.  **Lancer l'Entraînement de 50 Époques** : Téléverser `Phase2_Training_v7.ipynb` sur Colab avec GPU T4/A100.
-2.  **Remplacer best.pt** : Remplacer les poids de substitution par le modèle entraîné.
-3.  **Validation mAP** : Évaluer sur l'ensemble de validation — objectif ≥ 0,72.
-4.  **Test de Bout en Bout** : Démarrer FastAPI + React, connecter la webcam, vérifier le flux complet détection → alerte → tableau de bord.
-5.  **Export TensorRT** : Quantifier pour une inférence Edge à ≥40 FPS.
-6.  **Audit TFP** : Tester avec des images purement confuseuses — objectif < 2 %.
+1.  **Test de Bout en Bout** : Vérifier le flux complet détection → alerte → tableau de bord en utilisant `start_system.sh`.
+2.  **Lancer l'Entraînement de 50 Époques** : Téléverser `Phase2_Training_v7.ipynb` sur Colab avec GPU T4/A100.
+3.  **Remplacer best.pt** : Remplacer les poids de substitution par le modèle entièrement entraîné et ré-exporter vers ONNX.
+4.  **Validation mAP** : Évaluer sur l'ensemble de validation — objectif ≥ 0,72.
+5.  **Audit TFP** : Tester avec des images purement confuseuses — objectif < 2 %.
 
 ---
 *Rapport d'état généré par l'Assistant IA Antigravity.*
