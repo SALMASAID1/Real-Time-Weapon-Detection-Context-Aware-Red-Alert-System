@@ -298,8 +298,10 @@ class InferenceEngine:
                     weapon_cadence = max(30, inference_every_n)  # CPU: ~1 call/sec
 
                 weapon_dets = []
+                import os
+                is_demo = os.getenv("DEMO_MODE") == "1"
                 is_weapon_frame = (
-                    self._weapon_model_ready
+                    (self._weapon_model_ready or is_demo)
                     and (self.frame_id % weapon_cadence == 0)
                 )
                 if is_weapon_frame:
@@ -331,6 +333,30 @@ class InferenceEngine:
                         # _format_detections_for_ui doesn't re-convert.
                         for det in weapon_dets:
                             det['_pixel_space'] = True
+
+                        import os
+                        is_demo = os.getenv("DEMO_MODE") == "1"
+                        if is_demo:
+                            # Inject a highly confident fake weapon detection in the center of the frame
+                            weapon_dets.append({
+                                "bbox": [w * 0.4, h * 0.4, w * 0.6, h * 0.6], # Central box
+                                "class_id": 0,
+                                "class_name": "Weapon",
+                                "confidence": 0.99,
+                                "is_weapon": True,
+                                "_pixel_space": True
+                            })
+                            # ALSO inject a fake hand at the exact same coordinates so IoU = 1.0
+                            # This is REQUIRED because the ThreatScorer demands a hand holding the
+                            # weapon to escalate to a Red Alert (HIGH threat).
+                            weapon_dets.append({
+                                "bbox": [w * 0.4, h * 0.4, w * 0.6, h * 0.6],
+                                "class_id": 1, # Doesn't matter
+                                "class_name": "hand",
+                                "confidence": 0.78,
+                                "is_weapon": False,
+                                "_pixel_space": True
+                            })
 
                         if weapon_dets:
                             logger.info(
@@ -430,8 +456,9 @@ class InferenceEngine:
                 
                 if self.alert_dispatcher:
                     try:
+                        event_id = f"{self.frame_id}_{high_threat_sd.detection.get('class_id', 0)}"
                         asyncio.run_coroutine_threadsafe(
-                            self.alert_dispatcher.dispatch(high_threat_sd, gradcam_jpeg, self.camera_id),
+                            self.alert_dispatcher.dispatch(high_threat_sd, gradcam_jpeg, self.camera_id, event_id),
                             self.loop
                         )
                     except Exception as e:

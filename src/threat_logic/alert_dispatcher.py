@@ -96,7 +96,7 @@ class AlertDispatcher:
         # Cooldown registry: event_key -> {time, id}
         self.dispatch_history = {}
 
-    async def dispatch(self, scored_detection: ScoredDetection, gradcam_jpeg: Optional[bytes], camera_id: str) -> str:
+    async def dispatch(self, scored_detection: ScoredDetection, gradcam_jpeg: Optional[bytes], camera_id: str, event_id: str) -> str:
         """
         Dispatch all channels for a HIGH threat event.
 
@@ -108,7 +108,7 @@ class AlertDispatcher:
 
         Returns
         -------
-        str — Stable event_id (UUID4) for this alert event.
+        str — Stable event_id for this alert event.
         """
         det = scored_detection.detection
         x1, y1, x2, y2 = det['bbox']
@@ -117,7 +117,6 @@ class AlertDispatcher:
         event_key = f"{det.get('class_id', 0)}_{gx}_{gy}"
         
         now = datetime.now()
-        event_id = str(uuid.uuid4())
         
         # Check cooldown
         if event_key in self.dispatch_history:
