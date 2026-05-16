@@ -48,12 +48,14 @@ Notre système utilise un pipeline **d'Inférence à Double Flux** à la pointe 
 *   **Tableau de Bord React :** Surveillance en direct (VideoCanvas), historique des menaces (REST paginé), paramètres en temps réel (ThresholdPanel).
 *   **Déduplication des Alertes :** Période de refroidissement par clé spatiale pour éviter le spam de notifications.
 
-### Phase 5 : Optimisation et Déploiement (Active ⚡)
-*   **Entraînement du Modèle :** Exécution complète de 50 époques avec LR différentiel (`1e-5` backbone / `5e-5` head).
-*   **Optimisation Edge :** Quantification TensorRT/OpenVINO pour une inférence à ≥40 FPS.
-*   **Validation Système :** Évaluation mAP, audit TFP, benchmarking de latence de bout en bout.
+### Phase 5 : Optimisation et Déploiement (Terminée ✅)
+*   **Entraînement Complet du Modèle :** Exécution de 50 époques terminée avec des taux d'apprentissage différentiels. Précision cible atteinte.
+*   **Optimisation Edge :** Intégration d'ONNX Runtime pour une inférence haute performance.
+*   **Validation Système :** Vérification du mAP, audit TFP et benchmarks de latence de bout en bout.
 
-### Phase 6 : Optimisation du Jeu de Données (Planifiée 📋)
+### Phase 6 : Maintenance Post-Projet (Active 📋)
+*   **Surveillance Continue :** Suivi des performances dans des environnements réels.
+*   **Expansion du Jeu de Données :** Mises à jour périodiques avec de nouveaux cas limites ou objets confuseurs.
 *   **FiftyOne Brain :** Calcul des scores d'unicité pour élaguer les images d'armes redondantes.
 *   **Rééquilibrage des Classes :** Réduction du ratio Arme:Confuseur pour des frontières de décision plus nettes.
 *   **QA Visuelle :** Inspection manuelle des négatifs difficiles et des instances mal étiquetées.

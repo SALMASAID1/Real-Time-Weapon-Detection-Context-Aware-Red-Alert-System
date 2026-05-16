@@ -48,12 +48,14 @@ Our system utilizes a state-of-the-art **Two-Stream Inference Pipeline**:
 *   **React Dashboard:** Live monitoring (VideoCanvas), threat history (paginated REST), runtime settings (ThresholdPanel).
 *   **Alert Deduplication:** Spatial-key cooldown to prevent notification spam.
 
-### Phase 5: Optimization & Deployment (Active ⚡)
-*   **Model Training:** Full 50-epoch run with differential LR (`1e-5` backbone / `5e-5` head).
-*   **Edge Optimization:** TensorRT/OpenVINO quantization for ≥40 FPS inference.
-*   **System Validation:** mAP evaluation, FPR audit, end-to-end latency benchmarking.
+### Phase 5: Optimization and Deployment (Completed ✅)
+*   **Full Model Training**: Completed 50-epoch run with differential learning rates. Achieved target accuracy.
+*   **Edge Optimization**: ONNX Runtime integration for high-performance inference.
+*   **System Validation**: Verified mAP, FPR audit, and end-to-end latency benchmarks.
 
-### Phase 6: Dataset Optimization (Planned 📋)
+### Phase 6: Post-Project Maintenance (Active 📋)
+*   **Continuous Monitoring**: Performance tracking in real-world environments.
+*   **Dataset Expansion**: Periodic updates with new edge cases or confuser objects.
 *   **FiftyOne Brain:** Compute uniqueness scores to prune redundant weapon images.
 *   **Class Rebalancing:** Reduce Weapon:Confuser ratio for sharper decision boundaries.
 *   **Visual QA:** Manual inspection of hard negatives and mislabeled instances.
