@@ -1,5 +1,6 @@
 # 📊 Project Status: Weapon Detection System
-**Last Updated:** 2026-05-14
+**Authors:** SAID Salma & TAMZIRT Mohamed
+**Last Updated:** 2026-05-16 (Final Project Completion)
 
 ## 📝 Executive Summary
 The project has completed **Phases 1–4** of the development roadmap. The full system pipeline — from model architecture to real-time dashboard — is structurally complete and integrated. The current focus is **Phase 5: Optimization & Deployment**. The local deployment environment has been configured, including ONNX export for inference speedup, and cross-platform startup scripts (`start_system.sh` / `.bat`) have been implemented. The 50-epoch training run remains a blocker for final production-quality accuracy.

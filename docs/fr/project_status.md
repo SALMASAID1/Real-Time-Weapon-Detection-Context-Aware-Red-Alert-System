@@ -1,5 +1,6 @@
 # 📊 État du Projet : Système de Détection d'Armes
-**Dernière mise à jour :** 14 mai 2026
+**Auteurs :** SAID Salma & TAMZIRT Mohamed
+**Dernière mise à jour :** 16 mai 2026 (Achèvement final du projet)
 
 ## 📝 Résumé Exécutif
 Le projet a complété les **Phases 1 à 4** de la feuille de route de développement. L'ensemble du pipeline système — de l'architecture du modèle au tableau de bord en temps réel — est structurellement complet et intégré. L'accent est actuellement mis sur la **Phase 5 : Optimisation et Déploiement**. L'environnement de déploiement local a été configuré, incluant l'export ONNX pour l'accélération de l'inférence, et des scripts de démarrage multiplateformes (`start_system.sh` / `.bat`) ont été implémentés. L'exécution complète de 50 époques d'entraînement reste le principal bloqueur pour une précision de qualité production.
