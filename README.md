@@ -1,5 +1,8 @@
 # Real-Time Weapon Detection & Context-Aware Red Alert System
 
+**Authors:** SAID Salma & TAMZIRT Mohamed
+
+
 ## Overview
 This project implements a state-of-the-art weapon detection system using YOLOv11/v12 and Swin Transformers. It is designed for real-time monitoring with context-aware alerting logic (Proximity IoU) and multi-channel notification support (Telegram, Local Audio).
 
